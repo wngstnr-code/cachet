@@ -152,6 +152,8 @@ contract DemoFlow is Script {
 
         uint256 buyerBefore = c.usdt.balanceOf(c.buyer);
         uint256 creatorBefore = c.usdt.balanceOf(c.creator);
+        uint256 challengerBefore = c.usdt.balanceOf(c.challenger);
+        uint256 vaultBefore = c.vault.balanceOfVault();
 
         console.log("");
         console.log("[5/5] Resolver memutus: penantang MENANG...");
@@ -164,10 +166,26 @@ contract DemoFlow is Script {
         uint256 creatorGain = c.usdt.balanceOf(c.creator) - creatorBefore;
 
         console.log("");
-        console.log("=== HASIL ===");
-        console.log("PEMBELI menerima :", buyerGain / 1e6, "USDT");
-        console.log("KREATOR menerima :", creatorGain / 1e6, "USDT");
-        console.log("sertifikat dicabut:", c.cert.certData(certId).revoked);
+        console.log("=== ALIRAN UANG ===");
+        console.log("Dari kolam jaminan (vault):");
+        console.log("  saldo sebelum :", vaultBefore / 1e6, "USDT");
+        console.log("  saldo sesudah :", c.vault.balanceOfVault() / 1e6, "USDT");
+        console.log("");
+        console.log("Ke mana perginya:");
+        console.log("  PEMBELI  (pemegang aset saat ini) :", buyerGain / 1e6, "USDT  <-- klaim");
+        console.log(
+            "  PENANTANG (yang membuktikan)      :",
+            (c.usdt.balanceOf(c.challenger) - challengerBefore) / 1e6,
+            "USDT  <-- bond kembali + bounty"
+        );
+        console.log(
+            "  KREATOR  (yang menerbitkan)       :", creatorGain / 1e6, "USDT  <-- NOL, bond-nya di-slash"
+        );
+        console.log("");
+        console.log("Status sertifikat:");
+        console.log("  dicabut permanen :", c.cert.certData(certId).revoked);
+        console.log("  pemegang NFT     :", IERC721(address(c.cert)).ownerOf(certId));
+        console.log("  (NFT TIDAK dibakar -- tetap ada sebagai catatan publik)");
         console.log("");
 
         // Pagar terakhir: kalau ini gagal, JANGAN dipakai untuk rekaman.
