@@ -443,6 +443,10 @@ contract IntegrationTest is Test {
         assertEq(c2, c1 + 1);
     }
 
+    /// @dev DIPERKUAT setelah audit B2b. Versi lama memakai declaredValue = 0
+    ///      sehingga lolos secara tautologis — payout nol karena nilainya nol,
+    ///      bukan karena `insurable = false` dihormati. Kini declaredValue
+    ///      besar, jadi test benar-benar menguji flag insurable.
     function test_SertifikatTidakInsurableTetapBisaDigugat_PayoutNol() public {
         ICachetCertificate.MintRequest memory r = ICachetCertificate.MintRequest({
             to: buyer,
@@ -451,13 +455,66 @@ contract IntegrationTest is Test {
             revealedCommit: bytes32(0),
             assetURI: "ipfs://asset",
             tokenURI_: "ipfs://meta",
-            declaredValue: 0, // gray zone: boleh mint, tidak dijamin
+            declaredValue: DECLARED, // NILAI BESAR, tapi tidak insurable
             fraudBond: FRAUD_BOND,
-            premium: 0,
+            premium: PREMIUM,
             insurable: false
         });
         vm.prank(gateway);
         (, uint256 certId) = cert.registerAndMint(r);
+
+        vm.warp(block.timestamp + 73 hours); // lewati waiting period
+        uint256 buyerBefore = usdt.balanceOf(buyer);
+
+        vm.prank(challenger);
+        uint256 challengeId = cm.challenge(certId, "ipfs://bukti");
+        vm.warp(block.timestamp + 48 hours);
+
+        vm.expectEmit(true, true, false, true);
+        emit CachetVault.ClaimSkippedNoCoverage(certId, buyer, DECLARED);
+
+        vm.prank(resolver);
+        cm.resolve(challengeId, true, "ipfs://putusan");
+
+        assertTrue(cert.certData(certId).revoked, "pencabutan tetap bermakna sebagai catatan publik");
+        assertEq(usdt.balanceOf(buyer), buyerBefore, "insurable=false: TIDAK ada payout meski nilai besar");
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // Jendela coverage ditegakkan saat BAYAR (invariant §9.4) — temuan audit B2b
+    //
+    // Sebelum perbaikan ini, Vault membayar penuh tanpa peduli jendela coverage:
+    // klaim selama masa tunggu, klaim atas sertifikat gray-zone, dan klaim
+    // setelah kedaluwarsa semuanya dibayar 50 USDT. `waitingPeriod`,
+    // `coverageTerm`, dan `insurable` praktis cuma hiasan.
+    // ═════════════════════════════════════════════════════════════════════════
+
+    function test_KlaimSelamaWaitingPeriod_TidakDibayar() public {
+        uint256 certId = _mintTo(buyer);
+        assertFalse(cert.isCoverageActive(certId), "prasyarat: masih masa tunggu");
+
+        uint256 buyerBefore = usdt.balanceOf(buyer);
+
+        vm.prank(challenger);
+        uint256 challengeId = cm.challenge(certId, "ipfs://bukti");
+        vm.warp(block.timestamp + 48 hours); // liveness lewat, TAPI masih < 72 jam
+
+        vm.expectEmit(true, true, false, true);
+        emit CachetVault.ClaimSkippedNoCoverage(certId, buyer, DECLARED);
+
+        vm.prank(resolver);
+        cm.resolve(challengeId, true, "ipfs://putusan");
+
+        assertEq(usdt.balanceOf(buyer), buyerBefore, "klaim sebelum masa tunggu lewat WAJIB ditolak");
+        assertTrue(cert.certData(certId).revoked, "tapi sertifikat tetap dicabut");
+    }
+
+    function test_KlaimSetelahCoverageKedaluwarsa_TidakDibayar() public {
+        uint256 certId = _mintTo(buyer);
+        ICachetCertificate.CertData memory d = cert.certData(certId);
+
+        vm.warp(d.coverageEnd + 1 days);
+        assertFalse(cert.isCoverageActive(certId), "prasyarat: sudah kedaluwarsa");
 
         uint256 buyerBefore = usdt.balanceOf(buyer);
 
@@ -467,8 +524,43 @@ contract IntegrationTest is Test {
         vm.prank(resolver);
         cm.resolve(challengeId, true, "ipfs://putusan");
 
-        assertTrue(cert.certData(certId).revoked, "pencabutan tetap bermakna sebagai catatan publik");
-        assertEq(usdt.balanceOf(buyer), buyerBefore, "tapi tidak ada payout untuk cert tak insurable");
+        assertEq(usdt.balanceOf(buyer), buyerBefore, "coverage 365 hari harus benar-benar berakhir");
+    }
+
+    /// @dev Bounty TETAP dibayar walau klaim dilewati: menangkap pemalsuan
+    ///      adalah barang publik, terlepas dari apakah sertifikatnya dijamin.
+    function test_BountyTetapDibayarWalauKlaimDilewati() public {
+        uint256 certId = _mintTo(buyer); // masih masa tunggu
+        uint256 challengerBefore = usdt.balanceOf(challenger);
+
+        vm.prank(challenger);
+        uint256 challengeId = cm.challenge(certId, "ipfs://bukti");
+        vm.warp(block.timestamp + 48 hours);
+        vm.prank(resolver);
+        cm.resolve(challengeId, true, "ipfs://putusan");
+
+        assertEq(
+            usdt.balanceOf(challenger) - challengerBefore,
+            FRAUD_BOND + (PREMIUM / 2),
+            "penantang tetap dapat bounty; insentif menangkap pemalsuan tidak boleh hilang"
+        );
+    }
+
+    function test_KlaimTepatDiAwalCoverage_Dibayar() public {
+        uint256 certId = _mintTo(buyer);
+        ICachetCertificate.CertData memory d = cert.certData(certId);
+
+        // Gugat lebih dulu, lalu resolve TEPAT saat coverage mulai berlaku.
+        vm.warp(d.coverageStart - 48 hours);
+        vm.prank(challenger);
+        uint256 challengeId = cm.challenge(certId, "ipfs://bukti");
+
+        uint256 buyerBefore = usdt.balanceOf(buyer);
+        vm.warp(d.coverageStart);
+        vm.prank(resolver);
+        cm.resolve(challengeId, true, "ipfs://putusan");
+
+        assertEq(usdt.balanceOf(buyer) - buyerBefore, DECLARED, "tepat di awal jendela: dibayar penuh");
     }
 
     function test_RevertWhen_BuktiKosong() public {

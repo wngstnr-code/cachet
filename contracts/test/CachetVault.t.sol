@@ -147,7 +147,6 @@ contract CachetVaultTest is Test {
         assertEq(pr, PREMIUM);
         assertTrue(collected);
         assertFalse(settled);
-        assertEq(vault.totalCollected(), FRAUD_BOND + PREMIUM);
         assertEq(vault.balanceOfVault(), FRAUD_BOND + PREMIUM);
     }
 
@@ -256,6 +255,10 @@ contract CachetVaultTest is Test {
     ///      Revert akan mengunci klaim selamanya.
     function test_DanaKosong_PembayaranNolTanpaRevert() public {
         uint256 certId = _mint(creator);
+
+        // Coverage harus aktif dulu, kalau tidak klaim memang dilewati
+        // (§9.4) dan vault tidak terkuras.
+        vm.warp(block.timestamp + 73 hours);
 
         // Kuras vault lewat jalur sah supaya saldo benar-benar nol.
         vm.startPrank(cm);

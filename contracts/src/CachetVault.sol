@@ -58,12 +58,6 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
     mapping(uint256 => CertFunds) public certFunds;
     mapping(uint256 => uint256) public challengeBonds;
 
-    /// @notice Total dana yang secara pembukuan milik sertifikat & challenge.
-    /// @dev Dipakai untuk membedakan saldo yang "sudah ada pemiliknya" dari
-    ///      donasi/surplus. Bukan pengaman keras — pembayaran tetap dibatasi
-    ///      saldo nyata (§9.3).
-    uint256 public totalCollected;
-
     error NotCertificate(address caller, address expected);
     error NotChallengeManager(address caller, address expected);
     error NotWired(string what);
@@ -89,6 +83,13 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
 
     /// @notice Modal disetor ke vault. Tidak ada jalan keluar selain klaim.
     event VaultFunded(address indexed from, uint256 amount);
+
+    /// @notice Gugatan menang, sertifikat dicabut, TAPI klaim tidak dibayar
+    ///         karena coverage tidak berlaku (belum aktif / kedaluwarsa /
+    ///         sertifikat memang tidak insurable).
+    /// @dev Dipakai cert page untuk menjelaskan kenapa payout nol — tanpa ini
+    ///      pemegang hanya melihat sertifikatnya dicabut tanpa penjelasan.
+    event ClaimSkippedNoCoverage(uint256 indexed certId, address indexed holder, uint256 declaredValue);
 
     modifier onlyCertificate() {
         if (msg.sender != certificate) revert NotCertificate(msg.sender, certificate);
@@ -167,7 +168,6 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
 
         certFunds[certId] =
             CertFunds({fraudBond: fraudBond, premium: premium, collected: true, settled: false});
-        totalCollected += fraudBond + premium;
 
         _payToken.safeTransferFrom(payer, address(this), fraudBond + premium);
         emit CollectedOnMint(certId, payer, fraudBond, premium);
@@ -208,7 +208,6 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
         nonReentrant
     {
         challengeBonds[challengeId] = amount;
-        totalCollected += amount;
 
         _payToken.safeTransferFrom(challenger, address(this), amount);
         emit ChallengeBondCollected(challengeId, challenger, amount);
@@ -231,7 +230,7 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
         certFunds[certId].settled = true;
 
         CertFunds memory f = certFunds[certId];
-        uint256 declaredValue = ICachetCertificate(certificate).certData(certId).declaredValue;
+        ICachetCertificate.CertData memory d = ICachetCertificate(certificate).certData(certId);
 
         // 1. Bond penantang kembali — uangnya sendiri.
         uint256 bond = challengeBonds[challengeId];
@@ -241,10 +240,24 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
             emit BondRefunded(challengeId, challenger, refunded);
         }
 
-        // 2. Klaim pemegang saat ini. Dibatasi saldo nyata (§9.3).
-        uint256 paid = _pay(certHolder, declaredValue);
-        if (paid < declaredValue) emit PartialPayout(certId, declaredValue, paid);
-        emit ClaimPaid(certId, certHolder, paid);
+        // 2. Klaim pemegang — HANYA bila coverage memang berlaku.
+        //    INVARIANT §9.4: jendela coverage dicek ON-CHAIN, bukan hanya di
+        //    gateway. Tanpa cek ini, `waitingPeriod`, `coverageTerm`, dan flag
+        //    `insurable` cuma hiasan: sertifikat gray-zone atau yang masih
+        //    dalam masa tunggu tetap dibayar penuh.
+        uint256 declaredValue = d.declaredValue;
+        uint256 paid = 0;
+
+        if (_coverageApplies(d)) {
+            paid = _pay(certHolder, declaredValue);
+            if (paid < declaredValue) emit PartialPayout(certId, declaredValue, paid);
+            emit ClaimPaid(certId, certHolder, paid);
+        } else {
+            // Pencabutan TETAP terjadi dan bounty TETAP dibayar: menangkap
+            // pemalsuan adalah barang publik, terlepas dari apakah sertifikat
+            // itu dijamin. Yang tidak terjadi hanyalah pembayaran klaim.
+            emit ClaimSkippedNoCoverage(certId, certHolder, declaredValue);
+        }
 
         // 3. Bounty penantang = fraud bond kreator + 50% premi (§1.3).
         uint256 bounty = f.fraudBond + (f.premium / 2);
@@ -292,6 +305,21 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
         // itu milik ERC-721. Di-cast di sini alih-alih mengubah interface beku.
         address actual = IERC721(certificate).ownerOf(certId);
         if (certHolder != actual) revert HolderMismatch(certId, certHolder, actual);
+    }
+
+    /// @dev INVARIANT §9.4. Menilai jendela coverage SENDIRI dari CertData,
+    ///      dan SENGAJA mengabaikan flag `revoked` — pencabutan justru sedang
+    ///      diproses pada transaksi ini (ChallengeManager memanggil
+    ///      `markRevoked` sebelum menyelesaikan pembayaran), jadi memakai
+    ///      `isCoverageActive` di sini akan selalu mengembalikan false dan
+    ///      tidak ada klaim yang pernah terbayar.
+    ///
+    ///      Sertifikat yang sudah dicabut sebelumnya tidak mungkin sampai ke
+    ///      sini: `challenge()` menolaknya lebih dulu.
+    function _coverageApplies(ICachetCertificate.CertData memory d) private view returns (bool) {
+        if (!d.insurable) return false;
+        // forge-lint: disable-next-line(block-timestamp)
+        return block.timestamp >= d.coverageStart && block.timestamp <= d.coverageEnd;
     }
 
     /// @dev INVARIANT §9.3. Tidak pernah mengirim melebihi saldo; mengembalikan
