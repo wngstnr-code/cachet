@@ -9,6 +9,7 @@ import {ChallengeManager} from "../src/ChallengeManager.sol";
 import {MockUSDT} from "../src/MockUSDT.sol";
 import {ICachetCertificate} from "../src/interfaces/ICachetCertificate.sol";
 import {IChallengeManager} from "../src/interfaces/IChallengeManager.sol";
+import {CachetGoverned} from "../src/base/CachetGoverned.sol";
 
 /// @notice Keempat kontrak dirangkai seperti di produksi, dengan uang sungguhan
 ///         (MockUSDT). Di sinilah klaim "jaminan ikut pembeli" akhirnya diuji
@@ -619,18 +620,87 @@ contract IntegrationTest is Test {
     // Invariant §9.1 ditegakkan Vault sendiri
     // ═════════════════════════════════════════════════════════════════════════
 
-    function test_RevertWhen_VaultDipanggilLangsungDenganHolderPalsu() public {
-        uint256 certId = _mintTo(creator);
-
-        // Bahkan bila ChallengeManager nakal, Vault menolak holder yang salah.
-        vm.prank(owner);
-        vault.setChallengeManager(owner);
+    /// @notice Menutup jalur pengurasan yang terbukti saat audit: owner
+    ///         mengganti ChallengeManager ke kontrak jahat lalu memanggil
+    ///         `settleChallengeWon` untuk dirinya sendiri. Modal 6 USDT, hasil
+    ///         sampai seluruh saldo vault, dalam satu transaksi.
+    ///         Setelah set-once, jalur itu tidak dipersulit -- ia tidak ada.
+    function test_WiringTerkunci_OwnerTidakBisaMerebutJalurDana() public {
+        address jahat = makeAddr("kontrakJahat");
 
         vm.expectRevert(
-            abi.encodeWithSelector(CachetVault.HolderMismatch.selector, certId, challenger, creator)
+            abi.encodeWithSelector(CachetGoverned.AlreadyWired.selector, "vault.challengeManager")
         );
         vm.prank(owner);
-        vault.settleChallengeWon(certId, 1, challenger, challenger);
+        vault.setChallengeManager(jahat);
+
+        assertEq(vault.challengeManager(), address(cm), "hanya ChallengeManager asli yang gerakkan dana");
+    }
+
+    function test_SeluruhWiringTerkunciSetelahDeploy() public {
+        address x = makeAddr("x");
+        vm.startPrank(owner);
+
+        vm.expectRevert(abi.encodeWithSelector(CachetGoverned.AlreadyWired.selector, "registry.gateway"));
+        reg.setGateway(x);
+
+        vm.expectRevert(abi.encodeWithSelector(CachetGoverned.AlreadyWired.selector, "certificate.gateway"));
+        cert.setGateway(x);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(CachetGoverned.AlreadyWired.selector, "certificate.challengeManager")
+        );
+        cert.setChallengeManager(x);
+
+        vm.expectRevert(abi.encodeWithSelector(CachetGoverned.AlreadyWired.selector, "certificate.registry"));
+        cert.setRegistry(x);
+
+        vm.expectRevert(abi.encodeWithSelector(CachetGoverned.AlreadyWired.selector, "certificate.vault"));
+        cert.setVault(x);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(CachetGoverned.AlreadyWired.selector, "challengeManager.resolver")
+        );
+        cm.setResolver(x);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(CachetGoverned.AlreadyWired.selector, "challengeManager.certificate")
+        );
+        cm.setCertificate(x);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(CachetGoverned.AlreadyWired.selector, "challengeManager.vault")
+        );
+        cm.setVault(x);
+
+        vm.stopPrank();
+    }
+
+    /// @dev Yang BEKU adalah siapa yang berwenang; berapa besarannya tetap
+    ///      bisa disetel dalam pagar masing-masing (secara sengaja, §5.0).
+    function test_ParameterTetapBisaDisetelWalauWiringTerkunci() public {
+        vm.startPrank(owner);
+        cert.setWaitingPeriod(1 hours);
+        cert.setMaxDeclaredValue(200e6);
+        vault.setPremiumBps(300);
+        cm.setLivenessWindow(6 hours);
+        vm.stopPrank();
+
+        assertEq(cert.waitingPeriod(), 1 hours);
+        assertEq(cert.maxDeclaredValue(), 200e6);
+        assertEq(vault.premiumBps(), 300);
+        assertEq(cm.livenessWindow(), 6 hours);
+    }
+
+    function test_RevertWhen_MaxDeclaredValueMelebihiPagar() public {
+        uint256 tooMuch = cert.MAX_DECLARED_VALUE_CEILING() + 1;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CachetCertificate.ValueOutOfRange.selector, tooMuch, cert.MAX_DECLARED_VALUE_CEILING()
+            )
+        );
+        vm.prank(owner);
+        cert.setMaxDeclaredValue(tooMuch);
     }
 
     function test_RevertWhen_NonCertificateMemanggilCollectOnMint() public {

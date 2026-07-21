@@ -61,8 +61,10 @@ contract CachetRegistry is ICachetRegistry, CachetGoverned {
     // ── Wiring (§3.1) ────────────────────────────────────────────────────────
 
     /// @param gateway_ alamat kontrak CachetCertificate (lihat catatan di atas)
+    /// @dev Set-once. Wiring salah = redeploy (lihat `_lockWiring`).
     function setGateway(address gateway_) external onlyOwner {
         if (gateway_ == address(0)) revert ZeroAddress();
+        _lockWiring(gateway, "registry.gateway");
         emit GatewaySet(gateway, gateway_);
         gateway = gateway_;
     }

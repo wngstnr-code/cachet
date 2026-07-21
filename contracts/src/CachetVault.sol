@@ -117,8 +117,12 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
 
     // ── Wiring ───────────────────────────────────────────────────────────────
 
+    /// @dev SET-ONCE. Ini setter paling kritis di seluruh sistem: sebelum
+    ///      dikunci, owner bisa mengarahkannya ke kontrak jahat lalu memanggil
+    ///      `settleChallengeWon` untuk dirinya sendiri.
     function setChallengeManager(address cm_) external onlyOwner {
         if (cm_ == address(0)) revert ZeroAddress();
+        _lockWiring(challengeManager, "vault.challengeManager");
         emit ChallengeManagerSet(challengeManager, cm_);
         challengeManager = cm_;
     }

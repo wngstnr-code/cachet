@@ -56,6 +56,14 @@ contract CachetCertificate is ICachetCertificate, ERC721URIStorage, CachetGovern
     uint64 public constant MAX_WAITING_PERIOD = 30 days;
     uint64 public constant MAX_COVERAGE_TERM = 3650 days; // 10 tahun
 
+    /// @notice Plafon tertinggi yang boleh disetel untuk `maxDeclaredValue`.
+    /// @dev Tanpa pagar ini, owner bisa menaikkan plafon sampai tak terhingga
+    ///      lalu menerbitkan satu sertifikat yang jaminannya sebesar seluruh
+    ///      saldo vault. Membatasi ledakan terburuk dari satu sertifikat.
+    ///      10.000 USDT memberi ruang tumbuh 100x dari default tanpa membuka
+    ///      pintu itu.
+    uint256 public constant MAX_DECLARED_VALUE_CEILING = 10_000e6;
+
     mapping(uint256 => CertData) private _certData;
     uint256 private _certCount;
 
@@ -67,6 +75,7 @@ contract CachetCertificate is ICachetCertificate, ERC721URIStorage, CachetGovern
     error AlreadyRevoked(uint256 certId);
     error InvalidParam();
     error ParamOutOfRange(uint64 value, uint64 max);
+    error ValueOutOfRange(uint256 value, uint256 max);
     error UnknownEntryId(uint256 entryId, uint256 entryCount);
 
     event GatewaySet(address indexed previous, address indexed current);
@@ -90,26 +99,34 @@ contract CachetCertificate is ICachetCertificate, ERC721URIStorage, CachetGovern
 
     // ── Wiring ───────────────────────────────────────────────────────────────
 
+    /// @dev Set-once. Wiring salah = redeploy (lihat `_lockWiring`).
     function setGateway(address gateway_) external onlyOwner {
         if (gateway_ == address(0)) revert ZeroAddress();
+        _lockWiring(gateway, "certificate.gateway");
         emit GatewaySet(gateway, gateway_);
         gateway = gateway_;
     }
 
+    /// @dev Set-once. Wiring salah = redeploy (lihat `_lockWiring`).
     function setChallengeManager(address cm_) external onlyOwner {
         if (cm_ == address(0)) revert ZeroAddress();
+        _lockWiring(challengeManager, "certificate.challengeManager");
         emit ChallengeManagerSet(challengeManager, cm_);
         challengeManager = cm_;
     }
 
+    /// @dev Set-once. Wiring salah = redeploy (lihat `_lockWiring`).
     function setRegistry(address registry_) external onlyOwner {
         if (registry_ == address(0)) revert ZeroAddress();
+        _lockWiring(address(registry), "certificate.registry");
         emit RegistrySet(address(registry), registry_);
         registry = ICachetRegistry(registry_);
     }
 
+    /// @dev Set-once. Wiring salah = redeploy (lihat `_lockWiring`).
     function setVault(address vault_) external onlyOwner {
         if (vault_ == address(0)) revert ZeroAddress();
+        _lockWiring(address(vault), "certificate.vault");
         emit VaultSet(address(vault), vault_);
         vault = ICachetVault(vault_);
     }
@@ -132,6 +149,7 @@ contract CachetCertificate is ICachetCertificate, ERC721URIStorage, CachetGovern
     }
 
     function setMaxDeclaredValue(uint256 v) external onlyOwner {
+        if (v > MAX_DECLARED_VALUE_CEILING) revert ValueOutOfRange(v, MAX_DECLARED_VALUE_CEILING);
         emit ParamChanged("maxDeclaredValue", maxDeclaredValue, v);
         maxDeclaredValue = v;
     }
