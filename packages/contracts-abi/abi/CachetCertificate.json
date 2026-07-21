@@ -51,6 +51,32 @@
   },
   {
     "type": "function",
+    "name": "MIN_COVERAGE_TERM",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MIN_WAITING_PERIOD",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "approve",
     "inputs": [
       {
@@ -1197,11 +1223,6 @@
   },
   {
     "type": "error",
-    "name": "InvalidParam",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "NotChallengeManager",
     "inputs": [
       {
@@ -1262,6 +1283,22 @@
         "name": "account",
         "type": "address",
         "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "ParamBelowFloor",
+    "inputs": [
+      {
+        "name": "value",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "min",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ]
   },
