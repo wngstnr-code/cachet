@@ -148,6 +148,8 @@ contract DemoFlow is Script {
     function resolve(uint256 challengeId, uint256 certId) external {
         Ctx memory c = _ctx();
 
+        _preflightResolve(c, challengeId, certId);
+
         uint256 buyerBefore = c.usdt.balanceOf(c.buyer);
         uint256 creatorBefore = c.usdt.balanceOf(c.creator);
 
@@ -176,6 +178,37 @@ contract DemoFlow is Script {
         console.log("Inilah pembeda utama Cachet.");
 
         _reportBalances(c);
+    }
+
+    /// @dev Menampilkan momen coverage MENYALA — transisi ini yang membuat
+    ///      masa tunggu terlihat sebagai mekanisme, bukan sekadar angka di
+    ///      dokumen. Tanpa ini, video melompat dari "belum aktif" langsung ke
+    ///      payout, dan penonton tidak pernah melihat jaminan itu hidup.
+    ///
+    ///      Sekaligus menolak resolve yang terlalu dini dengan sisa detik yang
+    ///      bisa dibaca, alih-alih revert kriptik di tengah rekaman.
+    function _preflightResolve(Ctx memory c, uint256 challengeId, uint256 certId) internal view {
+        ICachetCertificate.CertData memory d = c.cert.certData(certId);
+
+        console.log("");
+        console.log("--- status sebelum putusan ---");
+        if (c.cert.isCoverageActive(certId)) {
+            console.log("coverage: AKTIF sejak timestamp", d.coverageStart);
+            console.log("          (masa tunggu sudah lewat -- jaminan hidup)");
+        } else {
+            console.log("coverage: BELUM AKTIF. Klaim akan DITOLAK.");
+            console.log("          mulai berlaku pada:", d.coverageStart);
+            console.log("          sekarang         :", block.timestamp);
+        }
+
+        (,, uint64 openedAt,,) = c.cm.getChallenge(challengeId);
+        uint64 bolehSetelah = openedAt + c.cm.livenessWindow();
+        if (block.timestamp < bolehSetelah) {
+            console.log("");
+            console.log("jendela liveness belum lewat. Tunggu", bolehSetelah - block.timestamp, "detik lagi.");
+            revert("Liveness belum lewat -- lihat sisa detik di atas");
+        }
+        console.log("liveness : LEWAT (dibuka", openedAt, ")");
     }
 
     /// @dev Gagal lebih awal dengan pesan yang bisa dibaca manusia, daripada
