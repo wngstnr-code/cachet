@@ -8,10 +8,12 @@ on:
     branches: [main]
     paths:
       - "contracts/**"
+      - "packages/contracts-abi/**"
       - ".github/workflows/contracts.yml"
   pull_request:
     paths:
       - "contracts/**"
+      - "packages/contracts-abi/**"
       - ".github/workflows/contracts.yml"
 
 # PR yang di-push berkali-kali: batalkan run lama, jalankan yang terbaru saja.
@@ -55,6 +57,24 @@ jobs:
 
       - name: Test
         run: forge test -vvv
+
+      # ABI basi adalah bug termahal di proyek ini: Person A menulis
+      # ChainClient dari file itu, dan kegagalannya baru muncul di hari
+      # integrasi sebagai error encoding yang tidak menunjuk ke mana pun.
+      # Diperiksa dengan cara paling sederhana yang bisa dipercaya:
+      # generate ulang, lalu cek apakah ada diff.
+      - name: ABI handover masih segar?
+        run: |
+          python3 script/export-abi.py
+          cd ..
+          if ! git diff --quiet packages/contracts-abi/; then
+            echo "::error::ABI di packages/contracts-abi/ BASI."
+            echo "Interface kontrak berubah tapi ABI belum diekspor ulang."
+            echo "Perbaiki: cd contracts && make export-abi"
+            git diff --stat packages/contracts-abi/
+            exit 1
+          fi
+          echo "ABI segar."
 
       # Tidak memblokir merge: coverage bisa rewel dan angkanya mudah
       # menyesatkan (MockUSDT 100% padahal cuma 8 baris). Ditampilkan sebagai
