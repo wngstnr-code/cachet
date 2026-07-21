@@ -30,13 +30,15 @@ git submodule update --init --recursive
 
 | Kontrak | Status | Catatan |
 |---|---|---|
-| `MockUSDT` | ✅ deployed | ERC-20 **6 desimal**, faucet publik, cap 1jt/panggilan |
+| `MockUSDT` | ✅ deployed & verified | ERC-20 **6 desimal**, faucet publik, cap 1jt/panggilan |
 
 ### Alamat X Layer Testnet (chainId 1952)
 
 | | |
 |---|---|
 | `MockUSDT` | `0x9ad14e783DCe270BE1214153E940aa686f91fa40` |
+| Terverifikasi | ✅ Sourcify `exact_match` (creation + runtime) |
+| Source publik | https://repo.sourcify.dev/1952/0x9ad14e783DCe270BE1214153E940aa686f91fa40 |
 | Explorer | https://www.okx.com/web3/explorer/xlayer-test/address/0x9ad14e783DCe270BE1214153E940aa686f91fa40 |
 | Deployed | 21 Jul 2026, block 36190059 |
 
@@ -48,6 +50,19 @@ cast send 0x9ad14e783DCe270BE1214153E940aa686f91fa40 \
   --rpc-url https://testrpc.xlayer.tech --private-key $PK
 # 1000000000 = 1000 USDT (6 desimal)
 ```
+
+## Dua aturan yang berlaku untuk semua kontrak
+
+**1. Tidak upgradeable, tapi parameternya bisa disetel.** Tidak ada proxy. Klaim produk
+ini adalah jaminan yang bisa dicek tanpa mempercayai kami — kontrak upgradeable berarti
+logika payout bisa ditulis ulang setelah sertifikat terjual. Sebagai gantinya, angka
+kebijakan (`waitingPeriod`, `maxDeclaredValue`, `fraudBond`, `premiumBps`,
+`challengeBond`, `livenessWindow`) jadi variabel `onlyOwner` dengan event
+`ParamChanged`. **Parameter boleh berubah, aturan main tidak** — payout selalu ke
+`ownerOf(certId)`. Detail: §5.0 technical plan.
+
+**2. Setiap deploy wajib terverifikasi** lewat Sourcify (gratis, tanpa API key). Sudah
+otomatis di `make deploy-*`. Cek: `make verify-status ADDR=0x...`.
 
 **Kenapa mock, bukan USDT asli:** di testnet tidak ada deployment Tether resmi, dan
 test butuh kontrol penuh atas saldo tiap wallet. Kalau flag §10 diputar ke mainnet
