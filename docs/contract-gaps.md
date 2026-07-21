@@ -1,10 +1,13 @@
 # Daftar Gap Kontrak — bahan diskusi B ↔ A
 
-> **Status:** per 22 Jul 2026, setelah B1/B2a/B2b + lima putaran audit.
+> **Status:** per 22 Jul 2026, setelah B1/B2a/B2b + **enam** putaran audit.
+> Audit keenam memverifikasi ulang seluruh daftar ini terhadap kode terkini
+> (pasca commit `f1a54b4`, lantai parameter): **kategori B sudah tertutup**,
+> dan ditemukan gap baru — lihat kategori **G**.
 > **Tujuan:** daftar jujur semua yang BELUM tertutup, supaya keputusannya diambil
 > sadar — bukan ditemukan juri.
 >
-> 153 test hijau, 21/21 mutasi tertangkap, coverage 99.6% baris. Angka itu
+> 160 test hijau, 21/21 mutasi tertangkap, coverage 99.6% baris. Angka itu
 > mengukur apakah kode yang ADA benar. Dokumen ini soal yang **tidak ada**.
 
 Tiga dari lima audit menemukan bug di tempat yang sebelumnya dinyatakan aman.
@@ -49,52 +52,119 @@ Konsekuensi dari A1; hilang bersamaan kalau adjudikasi didesentralisasi.
 
 ---
 
-## B. Penyalahgunaan parameter — bisa ditutup murah
+## B. Penyalahgunaan parameter — ✅ TERTUTUP (commit `f1a54b4`)
 
-Semua parameter punya **batas atas**, tapi **tidak satu pun punya batas bawah**.
-Terverifikasi di kode.
+Terverifikasi di kode saat audit keenam: semua parameter kini punya lantai
+konstanta (`ParamBelowFloor`), plus batas atas yang sudah ada sebelumnya.
 
-### B1. `livenessWindow` boleh disetel 0 🔴
+| # | Parameter | Lantai terpasang | Status |
+|---|---|---|---|
+| B1 | `livenessWindow` | `MIN_LIVENESS_WINDOW = 30 seconds` | ✅ |
+| B2 | `premiumBps` | `MIN_PREMIUM_BPS = 10` (0,1%) | ✅ |
+| B3 | `fraudBondAmount` | `MIN_FRAUD_BOND = 1e6` (1 USDT) | ✅ |
+| B4 | `waitingPeriod` | `MIN_WAITING_PERIOD = 10 seconds` | ✅ |
+| B5 | `challengeBond` | `MIN_CHALLENGE_BOND = 1e6` (1 USDT) | ✅ |
+| — | `coverageTerm` | `MIN_COVERAGE_TERM = 1 days` | ✅ (bonus) |
+| — | `maxDeclaredValue` | plafon `MAX_DECLARED_VALUE_CEILING = 10_000e6`; **sengaja tanpa lantai** (0 = rem darurat penerbitan) | ✅ |
+
+> **Residual yang tetap harus jujur diakui:** lantai mencegah mekanisme
+> DIMATIKAN, bukan menjamin nilainya memadai. Owner tetap bisa menyetel semua
+> ke lantai (liveness 30 detik, premi 0,1%, bond 1 USDT) — nilai demo, bukan
+> nilai produksi. Semua perubahan memancarkan `ParamChanged`, tapi "terlihat"
+> hanya berarti sesuatu kalau ada yang mengawasi. Dan lantai TIDAK menutup
+> G1/G2 di bawah — perubahan parameter tetap berlaku surut ke gugatan yang
+> sedang terbuka.
+
+---
+
+## G. Temuan BARU audit keenam — belum tertutup
+
+Ditemukan saat memverifikasi ulang kategori B. Polanya masih sama dengan lima
+audit sebelumnya: bukan kode yang salah, tapi **cek yang tidak pernah ditulis**.
+
+### G1. Perubahan `livenessWindow` berlaku surut ke gugatan terbuka 🟠
+
+`resolve()` menghitung jendela dengan nilai `livenessWindow` **saat resolve**,
+bukan nilai saat gugatan dibuka:
 
 ```solidity
-if (v > MAX_LIVENESS_WINDOW) revert;   // hanya batas atas
+uint64 requiredUntil = c.openedAt + livenessWindow;   // nilai SEKARANG
 ```
 
-Jendela liveness adalah **satu-satunya rem publik** terhadap resolver di MVP.
-Kalau disetel 0, owner+resolver bisa mint → gugat → putus dalam satu blok, tanpa
-jendela pengawasan sama sekali.
+Konsekuensi dua arah, dua-duanya di jalur sah `onlyOwner`:
+- **Memperpendek:** gugatan dibuka saat jendela 48 jam → owner menurunkan ke
+  lantai 30 detik → resolver langsung memutus. Jendela pengawasan publik yang
+  dijanjikan saat gugatan dibuka menguap. Lantai B1 menutup "nol", tapi tidak
+  menutup "dikecilkan di tengah jalan".
+- **Memperpanjang:** owner menaikkan ke `MAX` 30 hari → putusan tertunda sebulan,
+  dan sertifikat terkunci (`openChallengeOf`) selama itu. Digabung G2, ini bisa
+  dipakai mendorong putusan melewati akhir coverage.
 
-Ini melubangi mitigasi utama A1.
+**Usulan (murah, ~3 baris):** snapshot `livenessWindow` ke struct `Challenge`
+saat `challenge()`, dan `resolve()` memakai nilai snapshot itu. Perubahan
+parameter hanya berlaku untuk gugatan berikutnya.
 
-**Usulan:** batas bawah `MIN_LIVENESS_WINDOW`. Untuk demo butuh ~30 detik, jadi
-misalnya 30 detik sebagai lantai. Produksi tetap 48 jam.
+### G2. Jendela coverage dinilai saat RESOLVE, bukan saat gugatan dibuka 🟠
 
-### B2. `premiumBps` boleh disetel 0 🟠
+`_coverageApplies` memakai `block.timestamp` saat settle:
 
-Coverage jadi gratis — sertifikat bernilai 100 USDT tanpa bayar premi. Kalau
-digabung A1, biaya menyerang turun drastis.
+```solidity
+return block.timestamp >= d.coverageStart && block.timestamp <= d.coverageEnd;
+```
 
-**Usulan:** batas bawah, atau terima dan dokumentasikan.
+Gugatan yang dibuka **di dalam** masa coverage bisa berakhir
+`ClaimSkippedNoCoverage` hanya karena jendela liveness mendorong resolve
+melewati `coverageEnd`. Contoh: coverage berakhir 1 Des, gugatan sah dibuka
+30 Nov, liveness 48 jam → resolve paling cepat 2 Des → pemalsuan terbukti,
+sertifikat dicabut, bounty dibayar, **tapi klaim pemegang nol** — padahal fraud
+tertangkap di masa coverage. Efeknya: klausul jaminan diam-diam menyusut
+sebesar `livenessWindow` di ekor coverage. Digabung G1 (owner memperpanjang
+liveness saat gugatan terbuka), penyusutan ini bisa direkayasa.
 
-### B3. `fraudBondAmount` boleh disetel 0 🟠
+**Usulan:** nilai kelayakan coverage terhadap `c.openedAt` (saat gugatan
+dibuka), bukan saat resolve — butuh mengoper `openedAt` dari ChallengeManager
+ke Vault, atau snapshot kelayakan saat `challenge()`.
 
-Mint tanpa bond. Kreator tidak punya taruhan, dan bounty penantang jadi nol
-sehingga insentif menangkap pemalsuan hilang.
+### G3. Bond penantang tidak dipisahkan dari kolam klaim 🟡
 
-### B4. `waitingPeriod` boleh disetel 0 🟡
+Pembukuan vault agregat: satu saldo untuk modal, premi, fraud bond, dan
+challenge bond. `_pay` membayar sebatas saldo. Akibatnya klaim besar sertifikat
+LAIN bisa memakan dana yang "seharusnya" menjamin bond gugatan yang masih
+terbuka — dan refund bond penantang (uangnya sendiri, gugatan MENANG) bisa
+terbayar sebagian atau nol. `BondRefunded` jujur memancarkan jumlah aktual,
+tapi tidak ada padanan `PartialPayout` untuk bond, jadi cert page tidak bisa
+menjelaskan kenapa refund kurang.
 
-Coverage aktif seketika. **Sengaja dipakai saat demo** (dipercepat jadi 10 detik,
-bukan 0). Di produksi, 0 berarti klaim instan atas karya yang di-mint justru
-karena sengketanya sudah diketahui.
+Ini beda dari D1 (klaim berplafon saldo — diterima sadar): yang berisiko di
+sini adalah **uang milik penantang**, bukan janji coverage operator.
 
-### B5. `challengeBond` boleh disetel 0 🟡
+**Opsi:** earmark bond (saldo terpisah / akuntansi per-tujuan), atau terima dan
+dokumentasikan di disclosure + cert page.
 
-Gugatan jadi gratis → spam. Diredam sebagian oleh `openChallengeOf` (satu gugatan
-aktif per sertifikat), tapi tetap bisa mengunci sertifikat berulang kali.
+### G4. Komentar kode basi — bisa menyesatkan disclosure 🟡
 
-> **Catatan:** B1–B5 semuanya butuh owner bertindak jahat, dan semuanya memancarkan
-> `ParamChanged` yang terlihat publik. Tapi "terlihat" hanya berarti sesuatu kalau
-> ada yang mengawasi.
+Dua tempat komentar bertentangan dengan kode terkini:
+- `CachetCertificate.setWaitingPeriod`: `@param v 0 diperbolehkan` — padahal
+  `MIN_WAITING_PERIOD = 10 seconds` kini menolak 0.
+- Header `CachetGoverned`: daftar "KEKUASAAN OWNER" masih menyebut owner bisa
+  **mengganti** alamat gateway dan ChallengeManager — sudah tidak benar sejak
+  wiring set-once. (Arahnya kebalikan: kode lebih ketat dari komentarnya.
+  Tapi README/disclosure yang menyalin komentar ini akan salah dua arah.)
+
+**Usulan:** rapikan sebelum README ditulis — disclosure harus disalin dari
+kode, bukan dari komentar.
+
+### G5. `Ownable` satu langkah + `renounceOwnership` terbuka 🟡
+
+Kontrak memakai OZ `Ownable` biasa, bukan `Ownable2Step`. Dua jalur kaki
+tertembak: `transferOwnership` ke alamat salah ketik, atau `renounceOwnership`
+tak sengaja — dua-duanya membuat SEMUA setter parameter mati permanen
+(wiring memang sudah terkunci; yang hilang adalah kemampuan menyetel angka,
+termasuk rem darurat `maxDeclaredValue = 0`). Sistem tetap jalan dengan nilai
+saat itu — dampaknya sekelas C1, bukan pengurasan dana.
+
+**Opsi:** ganti ke `Ownable2Step` (~1 baris per kontrak) sebelum deploy, atau
+terima untuk testnet seperti C1.
 
 ---
 
@@ -191,21 +261,31 @@ ERC-8004, seasoning otomatis on-chain, zkML, C2PA anchoring penuh.
 
 ## Ringkasan untuk diskusi
 
+**Sudah selesai sejak versi pertama dokumen ini:**
+
+- ~~B1–B5 batas bawah parameter~~ → ✅ tertutup di commit `f1a54b4`
+  (lantai + `ParamBelowFloor`, test lantai hijau).
+
 **Butuh keputusan kalian berdua:**
 
 | # | Pertanyaan | Biaya |
 |---|---|---|
-| B1 | Pasang batas bawah `livenessWindow`? | ~5 baris |
-| B2–B5 | Batas bawah parameter lain? | ~15 baris |
+| G1 | Snapshot `livenessWindow` per gugatan? | ~3 baris + test |
+| G2 | Coverage dinilai saat gugatan dibuka, bukan saat resolve? | ~10 baris + test |
+| G3 | Earmark bond penantang, atau cukup didokumentasikan? | sedang / 0 |
+| G5 | `Ownable2Step` sebelum deploy? | ~1 baris per kontrak |
 | C1 | Cadangan kunci resolver / multisig? | prosedur, bukan kode |
 | A1 | Siapa yang pegang resolver — bisa orang luar? | mencari orang |
 
 **Tidak butuh keputusan, butuh dikerjakan:**
 
-- **E1 deploy testnet** — prioritas tertinggi
+- **E1 deploy testnet** — prioritas tertinggi (diverifikasi ulang audit keenam:
+  `broadcast/` baru berisi MockUSDT, empat kontrak inti belum pernah menyentuh chain)
 - **E2 review Dien** atas PR #7
+- **G4 rapikan komentar basi** — sebelum README/disclosure ditulis
 - **A1 + D-list masuk README** dan disclosure listing
 
-**Saranku soal urutan:** B1 layak dikerjakan sekarang (murah, menutup lubang di
-mitigasi utama). Sisanya bahas setelah deploy — karena E1 kemungkinan besar
-menghasilkan temuan yang mengubah prioritas.
+**Saranku soal urutan:** G1+G2 layak dikerjakan sekarang — murah, satu tema
+(snapshot kondisi saat gugatan dibuka), dan menambal sisa lubang di mitigasi
+utama A1 yang tidak tertutup oleh lantai parameter. G3/G5 bahas setelah deploy —
+karena E1 kemungkinan besar menghasilkan temuan yang mengubah prioritas.
