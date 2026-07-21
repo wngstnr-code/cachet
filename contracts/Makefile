@@ -22,6 +22,7 @@ help:
 	@echo "make demo             — jalankan babak 1-3 skenario demo"
 	@echo "make demo-resolve     — babak 4-5: CHALLENGE_ID=.. CERT_ID=.."
 	@echo "make demo-links       — tautan explorer tiap tx demo (untuk juri)"
+	@echo "make export-abi       — ekspor ABI ke packages/contracts-abi (untuk Person A)"
 	@echo "make verify           — verifikasi susulan: ADDR=0x... NAME=src/X.sol:X"
 	@echo "make verify-status    — cek status verifikasi: ADDR=0x..."
 
@@ -116,3 +117,8 @@ demo-resolve: verify-demo-env
 # Tautan verifikasi untuk juri: tiap transaksi demo -> URL explorer.
 demo-links:
 	@python3 script/demo-links.py
+
+# Titik temu #2 (§11.2): ABI yang dipakai Person A menulis ChainClient.
+# Wajib dijalankan ulang setiap kali interface kontrak berubah.
+export-abi: build
+	@python3 script/export-abi.py
