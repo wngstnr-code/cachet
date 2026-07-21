@@ -20,19 +20,23 @@ import {MockUSDT} from "../src/MockUSDT.sol";
 ///      siapa pun bisa melihat persis parameter apa yang dipakai saat demo
 ///      direkam. Tidak ada yang disembunyikan.
 ///
-///      `livenessWindow` sengaja TIDAK disetel nol. Jendela liveness adalah
-///      satu-satunya rem terhadap resolver di MVP; menghapusnya untuk demo
-///      berarti mempertunjukkan sistem yang berbeda dari yang dilisting.
-///      Dipendekkan ke 60 detik: mekanismenya tetap terlihat dan tetap
-///      menolak resolve yang terlalu dini, hanya lebih cepat. Jeda 60 detik
-///      itu di-jump-cut saat penyuntingan video (§3.4 delivery plan).
+///      KEDUA mekanisme tetap HIDUP, hanya dipercepat — tidak ada yang
+///      dimatikan. Ini keputusan sadar: menyetel `waitingPeriod` ke nol akan
+///      mempertunjukkan "mint lalu langsung dijamin", padahal produknya tidak
+///      bekerja begitu. Penonton harus melihat mekanisme yang sebenarnya.
 ///
-///      `waitingPeriod` disetel nol. Fungsinya menahan klaim atas karya yang
-///      di-mint justru karena kreator sudah tahu ada sengketa — risiko yang
-///      tidak ada dalam skenario terskrip. Tetap tercatat di explorer.
+///      Di video, jeda ~40 detik ini DIPERCEPAT (time-lapse), bukan dipotong.
+///      Mempercepat menunjukkan; memotong menyembunyikan.
+///
+///      Biayanya nol: masa tunggu berjalan BERSAMAAN dengan jendela liveness,
+///      bukan berurutan. Saat liveness 30 detik habis, masa tunggu 10 detik
+///      sudah lama lewat.
+///        t=0   mint      -> coverage mulai t+10
+///        t=~10 gugatan   -> liveness sampai t+40
+///        t=40  resolve   -> 40 > 10, coverage sudah aktif
 contract PrepareDemo is Script {
-    uint64 internal constant DEMO_WAITING_PERIOD = 0;
-    uint64 internal constant DEMO_LIVENESS_WINDOW = 60 seconds;
+    uint64 internal constant DEMO_WAITING_PERIOD = 10 seconds;
+    uint64 internal constant DEMO_LIVENESS_WINDOW = 30 seconds;
 
     /// @dev Modal awal vault. Tanpa ini klaim pertama hanya terbayar sebagian:
     ///      premi 2% berarti butuh ~50 sertifikat untuk menutup satu klaim.

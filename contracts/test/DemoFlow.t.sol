@@ -30,8 +30,8 @@ contract DemoFlowTest is Test {
     address internal challenger = makeAddr("challenger");
 
     // Nilai yang sama dengan PrepareDemo.s.sol
-    uint64 internal constant DEMO_WAITING_PERIOD = 0;
-    uint64 internal constant DEMO_LIVENESS_WINDOW = 60 seconds;
+    uint64 internal constant DEMO_WAITING_PERIOD = 10 seconds;
+    uint64 internal constant DEMO_LIVENESS_WINDOW = 30 seconds;
     uint256 internal constant SEED_CAPITAL = 500e6;
     uint256 internal constant DECLARED_VALUE = 50e6;
     uint256 internal constant FRAUD_BOND = 5e6;
@@ -103,14 +103,20 @@ contract DemoFlowTest is Test {
             })
         );
 
-        // waitingPeriod 0 -> coverage langsung aktif. Ini yang bikin demo mungkin.
-        assertTrue(cert.isCoverageActive(certId), "coverage harus aktif seketika di setelan demo");
+        // Masa tunggu TETAP HIDUP di setelan demo, hanya dipercepat jadi 10
+        // detik. Penonton harus melihat mekanismenya bekerja, bukan melihat
+        // "mint lalu langsung dijamin" yang bukan cara produk ini bekerja.
+        assertFalse(cert.isCoverageActive(certId), "masa tunggu harus tetap berlaku, bukan dimatikan");
+        assertEq(
+            cert.certData(certId).coverageStart,
+            cert.certData(certId).mintedAt + DEMO_WAITING_PERIOD,
+            "jendela dihitung dari parameter demo"
+        );
 
         // ── 2. Kreator menjual ke pembeli ────────────────────────────────────
         vm.prank(creator);
         cert.transferFrom(creator, buyer, certId);
-        assertEq(cert.ownerOf(certId), buyer);
-        assertTrue(cert.isCoverageActive(certId), "jaminan ikut pindah, tanpa langkah tambahan");
+        assertEq(cert.ownerOf(certId), buyer, "jaminan ikut pindah, tanpa langkah tambahan");
 
         // ── 3. Gugatan ───────────────────────────────────────────────────────
         vm.prank(challenger);
@@ -122,6 +128,17 @@ contract DemoFlowTest is Test {
         cm.resolve(challengeId, true, "ipfs://putusan");
 
         vm.warp(block.timestamp + DEMO_LIVENESS_WINDOW);
+
+        // Inti pemilihan angka: masa tunggu (10 dtk) berjalan BERSAMAAN dengan
+        // jendela liveness (30 dtk), bukan berurutan. Saat liveness habis,
+        // coverage sudah aktif -- jadi masa tunggu tidak menambah waktu tunggu
+        // sedetik pun, tapi mekanismenya tetap tampil di video.
+        assertTrue(cert.isCoverageActive(certId), "coverage sudah aktif saat liveness habis");
+        assertGt(
+            DEMO_LIVENESS_WINDOW,
+            DEMO_WAITING_PERIOD,
+            "liveness harus lebih panjang supaya masa tunggu terserap"
+        );
 
         // ── 5. Putusan: uang ke PEMBELI ──────────────────────────────────────
         uint256 buyerBefore = usdt.balanceOf(buyer);

@@ -103,8 +103,21 @@ contract DemoFlow is Script {
         vm.stopBroadcast();
 
         console.log("      pemegang baru :", IERC721(address(c.cert)).ownerOf(certId));
-        console.log("      coverage aktif:", c.cert.isCoverageActive(certId));
         console.log("      -> jaminan IKUT PINDAH tanpa langkah tambahan");
+        console.log("");
+
+        // Masa tunggu SENGAJA tetap hidup di demo (dipercepat, bukan dimatikan).
+        // Kalau di detik ini coverage belum aktif, itu bukan kegagalan --
+        // itu mekanismenya sedang bekerja, dan penonton harus melihatnya.
+        ICachetCertificate.CertData memory d = c.cert.certData(certId);
+        if (c.cert.isCoverageActive(certId)) {
+            console.log("      coverage: AKTIF");
+        } else {
+            console.log("      coverage: BELUM AKTIF -- masih dalam masa tunggu");
+            console.log("      mulai berlaku pada timestamp:", d.coverageStart);
+            console.log("      (masa tunggu menahan klaim atas karya yang di-mint");
+            console.log("       justru karena sengketanya sudah diketahui)");
+        }
 
         // ── BABAK 3: gugatan ─────────────────────────────────────────────────
         console.log("");

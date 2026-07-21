@@ -80,7 +80,7 @@
 - ❌ Footage > 90 detik (auto-gugur syarat)
 
 ### 3.4 Produksi
-Rekam layar 1080p (CleanShot/OBS), voice-over atau caption tegas, potong mati semua loading (jump-cut), musik lembut opsional. B menyiapkan **skenario on-chain siap-jalan** (`DemoFlow` script) supaya rekaman sekali take. Simpan master + versi ≤90s.
+Rekam layar 1080p (CleanShot/OBS), voice-over atau caption tegas, potong mati semua loading (jump-cut), musik lembut opsional. **Kecuali jeda mekanisme:** masa tunggu coverage dan jendela liveness (total ~40 detik di setelan demo) **DIPERCEPAT (time-lapse), bukan dipotong** — keduanya adalah mekanisme produk yang harus terlihat bekerja. Memotongnya menyembunyikan; mempercepatnya menunjukkan. Parameter demo tercatat publik di explorer lewat event `ParamChanged`. B menyiapkan **skenario on-chain siap-jalan** (`DemoFlow` script) supaya rekaman sekali take. Simpan master + versi ≤90s.
 
 ---
 
