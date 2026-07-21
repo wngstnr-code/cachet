@@ -1,6 +1,8 @@
 # RFC-001 — Perbaikan §3 Interface Freeze sebelum dibekukan
 
-> **Status:** MENUNGGU PERSETUJUAN
+> **Status:** ✅ DITERIMA PENUH (2026-07-21) — A (Dien) & B (Wangsit) menyetujui seluruh
+> 8 poin dengan usulan default; P1 = **Opsi C** (registerAndMint atomik), P8 ikut selesai.
+> §3 telah dipatch sesuai RFC ini; lihat changelog di §3 technical plan.
 > **Diusulkan oleh:** Wangsit (Person B)
 > **Perlu persetujuan:** Dien (Person A)
 > **Basis:** `technical_implementation_plan.md` §3.1–§3.4
@@ -236,14 +238,14 @@ Kalau yang dipilih Opsi B, maka wajib ada kompensasi: fungsi `Registry.voidEntry
 
 | # | Ringkas | Usulan | Keputusan (A & B) |
 |---|---|---|---|
-| P1 | `collectOnMint` ayam-telur | Opsi C: `registerAndMint()` atomik | ☐ SETUJU ☐ Opsi B ☐ TOLAK |
-| P2 | `settleChallengeLost` tanpa `certId` | tambah `certId` + `require ownerOf` | ☐ SETUJU ☐ TOLAK |
-| P3 | Vault tak kenal Certificate | lengkapi tabel wiring + assert di deploy | ☐ SETUJU ☐ TOLAK |
-| P4 | rumus commit `phash1` vs `phash0` | kunci `phash0` + `salt` = `bytes32` | ☐ SETUJU ☐ TOLAK |
-| P5 | `premium_quote` float | string base unit + rumus integer | ☐ SETUJU ☐ TOLAK |
-| P6 | approve ke Vault tak tertulis | NatSpec + instruksi di response + cert page | ☐ SETUJU ☐ TOLAK |
-| P7 | EIP-712 `phash0` vs `phashes` | `phashesHash` | ☐ SETUJU ☐ TOLAK |
-| P8 | register/mint non-atomik | ikut P1-C | ☐ SETUJU ☐ ikut P1-B + `voidEntry` |
+| P1 | `collectOnMint` ayam-telur | Opsi C: `registerAndMint()` atomik | ✅ SETUJU (Opsi C) |
+| P2 | `settleChallengeLost` tanpa `certId` | tambah `certId` + `require ownerOf` | ✅ SETUJU |
+| P3 | Vault tak kenal Certificate | lengkapi tabel wiring + assert di deploy | ✅ SETUJU |
+| P4 | rumus commit `phash1` vs `phash0` | kunci `phash0` + `salt` = `bytes32` | ✅ SETUJU |
+| P5 | `premium_quote` float | string base unit + rumus integer | ✅ SETUJU |
+| P6 | approve ke Vault tak tertulis | NatSpec + instruksi di response + cert page | ✅ SETUJU |
+| P7 | EIP-712 `phash0` vs `phashes` | `phashesHash` | ✅ SETUJU |
+| P8 | register/mint non-atomik | ikut P1-C | ✅ SETUJU (via P1-C) |
 
 **Setelah semua terisi:** patch §3 dalam satu PR + tulis baris changelog di §3 sesuai aturan
 §11.4, baru §3 dibekukan dan coding boleh mulai.

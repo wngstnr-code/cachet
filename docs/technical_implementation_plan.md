@@ -125,6 +125,16 @@ Dibangun beneran (end-to-end):
 
 Bagian ini adalah **kontrak antar-workstream**. Kalau A dan B sama-sama patuh pada bagian ini, integrasi hari-4 tinggal menyambungkan alamat.
 
+**Changelog (aturan §11.4 — perubahan tanpa baris di sini tidak berlaku):**
+
+- 2026-07-21 · RFC-001 P1/P8 · `ICachetCertificate`: +`registerAndMint(MintRequest)` — jalur mint produksi jadi satu tx atomik (register + mint + collect); `collectOnMint` kini dipanggil internal setelah certId lahir · disepakati A+B
+- 2026-07-21 · RFC-001 P2 · `ICachetVault.settleChallengeLost`: +param `certId`; kedua `settle*` wajib `require(certHolder == ownerOf(certId))` · disepakati A+B
+- 2026-07-21 · RFC-001 P3 · Aturan wiring diganti tabel setter lengkap (Vault kenal Certificate, dst.) + assert wiring di deploy script · disepakati A+B
+- 2026-07-21 · RFC-001 P4 · Rumus commit dikunci: `phash0` (bukan `phash1`), `salt` = `bytes32` · disepakati A+B
+- 2026-07-21 · RFC-001 P5 · §3.2 `premium_quote`: semua nilai uang jadi string base-unit 6 desimal; premi = `declaredValue * 200 / 10000` floor · disepakati A+B
+- 2026-07-21 · RFC-001 P6 · NatSpec `challenge()` + response `challenge_certificate`: penantang approve ke **Vault** · disepakati A+B
+- 2026-07-21 · RFC-001 P7 · EIP-712 Verdict: field `phash0` → `phashesHash` (keccak dari 4 hash) · disepakati A+B
+
 ### 3.1 Solidity interfaces (Person B implementasikan persis; Person A pakai ABI ini)
 
 ```solidity
@@ -134,7 +144,13 @@ pragma solidity ^0.8.24;
 /// ---------- CachetRegistry (termasuk commit-reveal) ----------
 interface ICachetRegistry {
     /// Kreator mengunci hash komitmen SEBELUM karya publik. Murah, privat.
-    /// commitHash = keccak256(abi.encodePacked(phash1, salt, creator))
+    /// RUMUS DIKUNCI (RFC-001 P4) — identik di NatSpec, helper gateway, dan README:
+    /// commitHash = keccak256(abi.encodePacked(
+    ///     bytes32 phash0,   // hash PERTAMA dari ensemble (imagehash `phash`)
+    ///     bytes32 salt,     // 32 byte acak dari kreator
+    ///     address creator
+    /// ))
+    /// Aman dari ambiguity encodePacked karena semua tipe fixed-size.
     function commit(bytes32 commitHash) external;
     /// timestamp komitmen (0 jika tak ada)
     function commitTimestamp(bytes32 commitHash) external view returns (uint64);
@@ -176,7 +192,31 @@ interface ICachetCertificate /* is ERC721 */ {
         uint32  challengesSurvived;
     }
 
-    /// Mint oleh gateway. msg.value / token transfer utk fraudBond + premi diurus Vault dulu.
+    /// ---- JALUR PRODUKSI (RFC-001 P1 Opsi C): SATU tx atomik ----
+    /// register + mint + tarik dana, atau semuanya batal. Menghilangkan
+    /// entri yatim registry (P8) dan masalah ayam-telur certId (P1).
+    /// Gateway approve payToken ke Vault SEKALI di awal (allowance besar),
+    /// lalu panggil ini per mint. onlyGateway.
+    struct MintRequest {
+        address to;              // penerima cert = kreator saat mint
+        bytes32[4] phashes;
+        bytes32 embCommit;
+        bytes32 revealedCommit;  // 0x0 bila tanpa commit-reveal
+        string  assetURI;
+        string  tokenURI_;
+        uint256 declaredValue;   // base unit, 6 desimal (P5)
+        uint256 fraudBond;       // base unit
+        uint256 premium;         // base unit
+        bool    insurable;
+    }
+
+    /// Urutan internal: Registry.register → _mint → Vault.collectOnMint(certId, gateway, …)
+    function registerAndMint(MintRequest calldata r)
+        external
+        returns (uint256 entryId, uint256 certId);
+
+    /// Mint terpisah — TETAP ADA untuk unit test B, tapi jalur produksi
+    /// hanya lewat registerAndMint. onlyGateway.
     function mintCertificate(
         address to,
         uint256 entryId,
@@ -202,9 +242,12 @@ interface ICachetVault {
     /// Dipanggil ChallengeManager:
     function collectChallengeBond(uint256 challengeId, address challenger, uint256 amount) external;
     /// payout klaim ke pemegang cert saat ini + bounty ke penantang; slash fraud bond kreator
+    /// WAJIB (RFC-001 P2): require(certHolder == certificate.ownerOf(certId), "holder mismatch")
     function settleChallengeWon(uint256 certId, uint256 challengeId, address certHolder, address challenger) external;
     /// challenge gagal: slash bond penantang (50% holder, 50% vault)
-    function settleChallengeLost(uint256 challengeId, address certHolder) external;
+    /// certId DITAMBAHKAN (RFC-001 P2) supaya Vault bisa verifikasi holder sendiri;
+    /// WAJIB: require(certHolder == certificate.ownerOf(certId), "holder mismatch")
+    function settleChallengeLost(uint256 certId, uint256 challengeId, address certHolder) external;
 
     function payToken() external view returns (address);
     function balanceOfVault() external view returns (uint256);
@@ -216,6 +259,9 @@ interface IChallengeManager {
 
     /// Siapa pun boleh menggugat cert aktif. evidenceURI = bukti admissible
     /// (timestamp on-chain / snapshot web-archive / C2PA capture) di IPFS/URL.
+    /// ⚠️ PRASYARAT (RFC-001 P6): penantang WAJIB payToken.approve(VAULT, challengeBond)
+    /// SEBELUM memanggil — transferFrom dilakukan Vault, BUKAN kontrak ini.
+    /// Approve ke ChallengeManager = revert.
     function challenge(uint256 certId, string calldata evidenceURI) external returns (uint256 challengeId);
 
     /// MVP: hanya resolver (admin) yang memutus, SETELAH liveness window (48 jam)
@@ -231,7 +277,18 @@ interface IChallengeManager {
 }
 ```
 
-**Aturan wiring (B):** `mintCertificate`, `register`, `collectOnMint` = `onlyGateway` (satu address, di-set saat deploy, bisa diganti owner). `markRevoked`/`incrementSurvived`/`settle*` = `onlyChallengeManager`. `resolve` = `onlyResolver`. `payToken` = ERC-20 mock USDT di testnet (B deploy sendiri `MockUSDT` 6 desimal dengan faucet `mint(address,uint256)` publik).
+**Aturan wiring (B) — tabel setter lengkap (RFC-001 P3):**
+
+| Kontrak | Setter wajib (`onlyOwner`) | Kenapa |
+|---|---|---|
+| CachetRegistry | `setGateway` | `register` = `onlyGateway` (dipanggil Certificate saat `registerAndMint`, jadi gateway Registry = alamat Certificate; catat di NatSpec) |
+| CachetCertificate | `setGateway`, `setChallengeManager`, `setRegistry`, `setVault` | `registerAndMint`/`mintCertificate` = `onlyGateway`; `markRevoked`/`incrementSurvived` = `onlyChallengeManager`; butuh Registry & Vault untuk orkestrasi atomik (P1) |
+| CachetVault | `setGateway`, `setChallengeManager`, `setCertificate` | `collectOnMint` dipanggil jalur mint; `settle*`/`collectChallengeBond` = `onlyChallengeManager`; butuh Certificate untuk `require(ownerOf)` (P2) |
+| ChallengeManager | `setResolver`, `setCertificate`, `setVault` | `resolve` = `onlyResolver`; butuh Certificate (cek coverage, markRevoked) & Vault (bond, settle) |
+
+`script/Deploy.s.sol` melakukan seluruh wiring berurutan setelah deploy, lalu menulis `addresses.testnet.json`. **Deploy dianggap gagal bila ada satu setter pun yang belum terpanggil** — assert semuanya di akhir script.
+
+`payToken` = ERC-20 mock USDT di testnet (B deploy sendiri `MockUSDT` 6 desimal dengan faucet `mint(address,uint256)` publik).
 
 ### 3.2 JSON schema — Originality Profile (output `verify`; A produksi, B tampilkan di cert page bila mau)
 
@@ -258,12 +315,20 @@ interface IChallengeManager {
     "notes": "advisory only"
   },
   "insurable": true,                         // false utk NEAR_DUP & GRAY_ZONE
-  "premium_quote": { "declared_value": 50.0, "premium": 1.0, "fraud_bond": 5.0, "currency": "USDT" },
+  "premium_quote": {                         // RFC-001 P5: uang = STRING base unit (6 desimal)
+    "currency": "USDT",
+    "decimals": 6,
+    "declared_value": "50000000",            // string base unit — INI yang mengikat
+    "premium": "1000000",                    // = declared_value * 200 / 10000, floor (integer div)
+    "fraud_bond": "5000000",
+    "_display": { "declared_value": "50.00", "premium": "1.00", "fraud_bond": "5.00" }  // manusia saja
+  },
   "phashes": ["0x…","0x…","0x…","0x…"],      // utk registrasi on-chain
+  "phashes_hash": "0x…",                     // RFC-001 P7: keccak256(abi.encodePacked(phashes[0..3]))
   "embedding_commit": "0x…",
   "signed": {
     "signer": "0xGATEWAY",
-    "signature": "0x…",                      // EIP-712 atas (asset_sha256, verdict, phashes, timestamp)
+    "signature": "0x…",                      // EIP-712 Verdict(bytes32 assetSha256,uint8 verdict,bytes32 phashesHash,uint64 timestamp)
     "timestamp": 1753000000
   }
 }
@@ -277,7 +342,7 @@ interface IChallengeManager {
 | `commit_work` / `POST /v1/commit` | x402 0.01 | commit_hash (client-side dihitung; server sediakan helper rumus) | tx hash + timestamp |
 | `register_and_mint` / `POST /v1/mint` | x402 0.5 + premi | image + creator_address + declared_value + optional reveal(salt) | cert_id, tx hash, cert page URL, Originality Profile |
 | `get_certificate` / `GET /v1/cert/:id` | gratis | cert id | CertData + umur + challenges survived + status coverage |
-| `challenge_certificate` / `POST /v1/challenge` | on-chain bond | cert_id + evidence URI | challenge_id + instruksi bond |
+| `challenge_certificate` / `POST /v1/challenge` | on-chain bond | cert_id + evidence URI | challenge_id + instruksi bond **eksplisit (RFC-001 P6): alamat VAULT (target approve!), jumlah bond, langkah `approve(vault, bond)` → `challenge()`** |
 | `watch_subscribe` / `POST /v1/watch` | x402 0.1/30hari | cert_id + webhook/email | subscription id |
 
 Semua endpoint idempotent bila diberi `request_id` sama. Error format: `{ "error": { "code", "message" } }`.
@@ -326,9 +391,9 @@ Langkah:
 
 1. Scaffold Fastify + `@modelcontextprotocol/sdk` (expose tools §3.3) + REST paralel.
 2. **x402**: integrasi OKX Payment SDK / onchainos (`okx-agent-payments-protocol`) sebagai middleware: endpoint berbayar balas `402` + payment requirements; verifikasi settlement sebelum eksekusi. (Dev mode: env `X402_BYPASS=1` untuk testing lokal.)
-3. **Signer EIP-712**: domain `Cachet-v1`, type `Verdict(bytes32 assetSha256,uint8 verdict,bytes32 phash0,uint64 timestamp)`. Kunci dari env (wallet gateway; address ini yang di-share ke B Hari-1).
-4. **Alur `register_and_mint`:** verify dulu (internal) → tolak `NEAR_DUP` → hitung premi → (on-chain, via viem): `payToken.approve` → `Vault.collectOnMint` → `Registry.register` → `Certificate.mintCertificate` → balas cert_id + link cert page. Sebelum ABI B ada: pakai **stub in-memory chain** di belakang interface `ChainClient` (swap ke viem saat integrasi — desain ini yang membuat A tak menunggu B).
-5. **Commit-reveal helper**: endpoint `commit_work` menerima `commit_hash` jadi (dokumentasikan rumus `keccak256(phash0 ‖ salt ‖ creator)`), submit ke Registry; `register_and_mint` menerima `salt` opsional untuk reveal.
+3. **Signer EIP-712**: domain `Cachet-v1`, type `Verdict(bytes32 assetSha256,uint8 verdict,bytes32 phashesHash,uint64 timestamp)` dengan `phashesHash = keccak256(abi.encodePacked(phashes[0..3]))` (RFC-001 P7). Kunci dari env (wallet gateway; address ini yang di-share ke B Hari-1).
+4. **Alur `register_and_mint` (RFC-001 P1 Opsi C — SATU tx):** verify dulu (internal) → tolak `NEAR_DUP` → hitung premi **pakai BigInt, floor** (`declaredValue * 200n / 10000n`, P5) → (on-chain, via viem): sekali di awal `payToken.approve(vault, allowanceBesar)`, lalu per mint cukup `Certificate.registerAndMint(MintRequest)` → balas entry_id + cert_id + link cert page. Gagal = seluruh tx revert, tidak ada state setengah jadi. Sebelum ABI B ada: pakai **stub in-memory chain** di belakang interface `ChainClient` (swap ke viem saat integrasi — desain ini yang membuat A tak menunggu B).
+5. **Commit-reveal helper**: endpoint `commit_work` menerima `commit_hash` jadi (dokumentasikan rumus §3.1: `keccak256(abi.encodePacked(bytes32 phash0, bytes32 salt, address creator))`), submit ke Registry; `register_and_mint` menerima `salt` opsional untuk reveal. Helper WAJIB mengembalikan rumus + contoh supaya kreator tidak menghitung dari prosa.
 6. Rate limit + max upload 10 MB + logging request_id.
 
 **Acceptance:** e2e lokal (engine + gateway + stub chain): verify → mint → get_certificate jalan; bayar x402 di-enforce (tanpa bayar → 402).
@@ -370,12 +435,12 @@ Langkah:
 Implementasikan **persis** interface §3.1, ditambah aturan berikut:
 
 1. **CachetRegistry**: `commit()` terbuka untuk siapa pun (murah, hanya simpan `commitHash → timestamp`, tolak overwrite). `register()` `onlyGateway`; bila `revealedCommit != 0x0`, wajib `commitTimestamp[revealedCommit] > 0` dan simpan `commitAt` = timestamp tsb (kontrak TIDAK memverifikasi isi commitment — verifikasi rumus dilakukan gateway; catat trade-off ini di NatSpec).
-2. **CachetCertificate**: ERC-721 standar (transfer = coverage pindah otomatis karena data coverage keyed by tokenId — tak perlu logic tambahan; **jangan** soulbound). Konstanta: `WAITING_PERIOD = 72 hours`, `COVERAGE_TERM = 365 days`, `MAX_DECLARED_VALUE = 100e6`. `mintCertificate` revert bila `declaredValue > MAX_DECLARED_VALUE`.
-3. **CachetVault**: pegang MockUSDT. `collectOnMint` = `transferFrom(payer)` fraud bond + premi, book-keep per certId. `settleChallengeWon`: bayar `declaredValue` (atau saldo vault jika kurang — `min()`, dan emit event `PartialPayout` — jujur soal plafon bootstrap) ke `certHolder`… **koreksi**: payout ke **pemegang saat resolve** (ambil `ownerOf(certId)` saat itu, bukan parameter bebas — parameter `certHolder` tetap ada untuk event tapi validasi `require(certHolder == ownerOf)`); bounty penantang = fraud bond certId + 50% premi certId. `settleChallengeLost`: bond penantang → 50% `ownerOf(certId)`, 50% tinggal di vault.
+2. **CachetCertificate**: ERC-721 standar (transfer = coverage pindah otomatis karena data coverage keyed by tokenId — tak perlu logic tambahan; **jangan** soulbound). Konstanta: `WAITING_PERIOD = 72 hours`, `COVERAGE_TERM = 365 days`, `MAX_DECLARED_VALUE = 100e6`. `mintCertificate` revert bila `declaredValue > MAX_DECLARED_VALUE`. **Tambahan RFC-001 P1:** implement `registerAndMint(MintRequest)` sebagai jalur produksi atomik — internal: `registry.register(…)` → `_mint` → `vault.collectOnMint(certId, gateway, fraudBond, premium)`; satu langkah gagal = seluruh tx revert. Konsekuensi wiring: gateway di Registry = alamat kontrak Certificate ini (lihat tabel §3.1).
+3. **CachetVault**: pegang MockUSDT. `collectOnMint` = `transferFrom(payer)` fraud bond + premi, book-keep per certId. `settleChallengeWon`: bayar `declaredValue` (atau saldo vault jika kurang — `min()`, dan emit event `PartialPayout` — jujur soal plafon bootstrap) ke `certHolder`… **koreksi**: payout ke **pemegang saat resolve** (ambil `ownerOf(certId)` saat itu, bukan parameter bebas — parameter `certHolder` tetap ada untuk event tapi validasi `require(certHolder == ownerOf)`); bounty penantang = fraud bond certId + 50% premi certId. `settleChallengeLost(certId, challengeId, certHolder)` (P2): bond penantang → 50% `ownerOf(certId)`, 50% tinggal di vault; validasi `require(certHolder == ownerOf(certId))` sama seperti settleChallengeWon.
 4. **ChallengeManager**: `challenge()` siapa pun, syarat `isCoverageActive(certId)` ATAU cert dalam masa hidup (boleh gugat cert tak-insurable untuk mencabut sertifikatnya — payout 0, tapi `revoked` tetap di-set), tarik challenge bond via Vault, status `Open`. `resolve()` `onlyResolver` + `require(block.timestamp >= openedAt + 48 hours || …)` (MVP: cukup tunggu liveness). Menang → `Certificate.markRevoked` + `Vault.settleChallengeWon`. Kalah → `Certificate.incrementSurvived` + `Vault.settleChallengeLost`.
 5. **Deploy script** (`script/Deploy.s.sol`): deploy urut, wire address (`setGateway`, `setChallengeManager`, `setResolver`), tulis `addresses.testnet.json` + export ABI ke `abi/`.
 
-**Test Foundry (minimal 20):** happy path mint→transfer→challenge menang (payout ke **pembeli**, bukan kreator — INI test terpenting, buktikan "coverage transferable"); challenge kalah → slash + survived++; waiting period menolak resolve payout dini; declared value > plafon revert; non-gateway tak bisa mint/register; commit → register dengan commitAt benar; double-commit revert; vault kurang saldo → partial payout + event.
+**Test Foundry (minimal 20):** happy path mint→transfer→challenge menang (payout ke **pembeli**, bukan kreator — INI test terpenting, buktikan "coverage transferable"); challenge kalah → slash + survived++; waiting period menolak resolve payout dini; declared value > plafon revert; non-gateway tak bisa mint/register; commit → register dengan commitAt benar; double-commit revert; vault kurang saldo → partial payout + event; **(RFC-001)** `registerAndMint` atomik — bila `collectOnMint` gagal (allowance kurang) seluruh tx revert & `entryCount` tidak bertambah; premi nilai ganjil (mis. `declaredValue = 33333333`) cocok persis dengan rumus integer floor gateway; `settle*` dengan `certHolder` yang bukan `ownerOf` → revert "holder mismatch".
 
 **Acceptance:** `forge test` hijau semua; deploy testnet sukses; `abi/` + `addresses.testnet.json` diserahkan ke A **Hari-3 malam**.
 
