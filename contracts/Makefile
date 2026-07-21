@@ -8,7 +8,7 @@
 -include ../.env
 export
 
-.PHONY: help build test test-gas fmt clean deploy-mockusdt verify-env
+.PHONY: help build test test-gas fmt clean deploy-mockusdt deploy verify-env verify-deploy-env verify-demo-env demo-prep demo demo-resolve verify verify-status
 
 help:
 	@echo "make build            — compile"
@@ -18,6 +18,9 @@ help:
 	@echo "make verify-env       — cek .env root sudah terisi"
 	@echo "make deploy-mockusdt  — deploy MockUSDT ke X Layer Testnet (+verifikasi)"
 	@echo "make deploy           — deploy 4 kontrak inti + wiring (+verifikasi)"
+	@echo "make demo-prep        — SEKALI: mampatkan waktu + modal vault"
+	@echo "make demo             — jalankan babak 1-3 skenario demo"
+	@echo "make demo-resolve     — babak 4-5: CHALLENGE_ID=.. CERT_ID=.."
 	@echo "make verify           — verifikasi susulan: ADDR=0x... NAME=src/X.sol:X"
 	@echo "make verify-status    — cek status verifikasi: ADDR=0x..."
 
@@ -83,3 +86,28 @@ verify-status:
 	@test -n "$(ADDR)" || (echo "❌ pakai: make verify-status ADDR=0x..."; exit 1)
 	@curl -s "https://sourcify.dev/server/v2/contract/$(CHAIN_ID)/$(ADDR)" \
 		| python3 -m json.tool || echo "belum terverifikasi"
+
+# ── Demo (B4) ────────────────────────────────────────────────────────────────
+# Butuh GATEWAY_PK -- kunci milik Person A. Jalankan di sesi bersama
+# (smoke test §6 / rekaman H6), bukan sendirian.
+
+verify-demo-env:
+	@test -n "$(ADDR_CERTIFICATE)"     || (echo "❌ ADDR_CERTIFICATE kosong — jalankan 'make deploy' dulu"; exit 1)
+	@test -n "$(GATEWAY_PK)"           || (echo "❌ GATEWAY_PK kosong — kunci ini milik Person A"; exit 1)
+	@test -n "$(DEMO_CREATOR_PK)"      || (echo "❌ DEMO_CREATOR_PK kosong"; exit 1)
+	@test -n "$(DEMO_CHALLENGER_PK)"   || (echo "❌ DEMO_CHALLENGER_PK kosong"; exit 1)
+	@test -n "$(RESOLVER_PK)"          || (echo "❌ RESOLVER_PK kosong"; exit 1)
+	@echo "✅ env demo lengkap"
+
+demo-prep: verify-env
+	forge script script/PrepareDemo.s.sol:PrepareDemo --rpc-url $(RPC_URL) --broadcast -vvv
+
+demo: verify-demo-env
+	forge script script/DemoFlow.s.sol:DemoFlow --rpc-url $(RPC_URL) --broadcast -vvv
+
+demo-resolve: verify-demo-env
+	@test -n "$(CHALLENGE_ID)" || (echo "❌ pakai: make demo-resolve CHALLENGE_ID=1 CERT_ID=1"; exit 1)
+	@test -n "$(CERT_ID)"      || (echo "❌ pakai: make demo-resolve CHALLENGE_ID=1 CERT_ID=1"; exit 1)
+	forge script script/DemoFlow.s.sol:DemoFlow \
+		--sig "resolve(uint256,uint256)" $(CHALLENGE_ID) $(CERT_ID) \
+		--rpc-url $(RPC_URL) --broadcast -vvv
