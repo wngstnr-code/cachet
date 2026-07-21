@@ -77,20 +77,28 @@ contract ChallengeManager is IChallengeManager, CachetGoverned, ReentrancyGuard 
 
     // ── Wiring ───────────────────────────────────────────────────────────────
 
+    /// @dev Set-once. Tidak menghentikan kolusi — resolver memang dikendalikan
+    ///      tim yang sama — tapi identitasnya terkunci dan publik sejak deploy.
+    ///      Tidak bisa diam-diam dialihkan ke kunci lain di kemudian hari.
     function setResolver(address resolver_) external onlyOwner {
         if (resolver_ == address(0)) revert ZeroAddress();
+        _lockWiring(resolver, "challengeManager.resolver");
         emit ResolverSet(resolver, resolver_);
         resolver = resolver_;
     }
 
+    /// @dev Set-once. Wiring salah = redeploy (lihat `_lockWiring`).
     function setCertificate(address certificate_) external onlyOwner {
         if (certificate_ == address(0)) revert ZeroAddress();
+        _lockWiring(address(certificate), "challengeManager.certificate");
         emit CertificateSet(address(certificate), certificate_);
         certificate = ICachetCertificate(certificate_);
     }
 
+    /// @dev Set-once. Wiring salah = redeploy (lihat `_lockWiring`).
     function setVault(address vault_) external onlyOwner {
         if (vault_ == address(0)) revert ZeroAddress();
+        _lockWiring(address(vault), "challengeManager.vault");
         emit VaultSet(address(vault), vault_);
         vault = ICachetVault(vault_);
     }

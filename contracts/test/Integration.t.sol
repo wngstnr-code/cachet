@@ -9,6 +9,7 @@ import {ChallengeManager} from "../src/ChallengeManager.sol";
 import {MockUSDT} from "../src/MockUSDT.sol";
 import {ICachetCertificate} from "../src/interfaces/ICachetCertificate.sol";
 import {IChallengeManager} from "../src/interfaces/IChallengeManager.sol";
+import {CachetGoverned} from "../src/base/CachetGoverned.sol";
 
 /// @notice Keempat kontrak dirangkai seperti di produksi, dengan uang sungguhan
 ///         (MockUSDT). Di sinilah klaim "jaminan ikut pembeli" akhirnya diuji
@@ -38,7 +39,7 @@ contract IntegrationTest is Test {
         usdt = new MockUSDT();
         reg = new CachetRegistry(owner);
         cert = new CachetCertificate(owner);
-        vault = new CachetVault(owner, address(usdt));
+        vault = new CachetVault(owner, address(usdt), address(cert));
         cm = new ChallengeManager(owner);
 
         vm.startPrank(owner);
@@ -47,7 +48,6 @@ contract IntegrationTest is Test {
         cert.setChallengeManager(address(cm));
         cert.setRegistry(address(reg));
         cert.setVault(address(vault));
-        vault.setCertificate(address(cert));
         vault.setChallengeManager(address(cm));
         cm.setResolver(resolver);
         cm.setCertificate(address(cert));
@@ -318,7 +318,8 @@ contract IntegrationTest is Test {
     function test_DanaVaultKurang_PartialPayout_KlaimTidakTerkunci() public {
         CachetRegistry reg2 = new CachetRegistry(owner);
         CachetCertificate cert2 = new CachetCertificate(owner);
-        CachetVault vault2 = new CachetVault(owner, address(usdt));
+        // Certificate dulu, baru Vault -- alamatnya immutable di Vault.
+        CachetVault vault2 = new CachetVault(owner, address(usdt), address(cert2));
         ChallengeManager cm2 = new ChallengeManager(owner);
 
         vm.startPrank(owner);
@@ -327,7 +328,6 @@ contract IntegrationTest is Test {
         cert2.setChallengeManager(address(cm2));
         cert2.setRegistry(address(reg2));
         cert2.setVault(address(vault2));
-        vault2.setCertificate(address(cert2));
         vault2.setChallengeManager(address(cm2));
         cm2.setResolver(resolver);
         cm2.setCertificate(address(cert2));
@@ -546,6 +546,42 @@ contract IntegrationTest is Test {
         );
     }
 
+    /// @dev TEMUAN AUDIT LINTAS-KONTRAK. `mintCertificate` (jalur test/darurat)
+    ///      menerbitkan sertifikat TANPA memanggil `collectOnMint`. Sebelum
+    ///      perbaikan, sertifikat semacam itu tetap dibayar penuh — dari premi
+    ///      milik sertifikat lain dan modal awal operator. Satu kekeliruan
+    ///      gateway bisa menguras vault orang lain.
+    function test_CertTanpaBond_TidakDapatKlaim() public {
+        _mintTo(creator); // sertifikat sah, membayar bond + premi
+
+        vm.prank(gateway);
+        uint256 gratis = cert.mintCertificate(buyer, 1, DECLARED, true, "ipfs://meta");
+
+        (,, bool collected,) = vault.certFunds(gratis);
+        assertFalse(collected, "prasyarat: sertifikat ini tidak pernah membayar bond");
+
+        vm.warp(block.timestamp + 73 hours);
+        assertTrue(cert.isCoverageActive(gratis), "Certificate menganggapnya aktif...");
+
+        uint256 buyerBefore = usdt.balanceOf(buyer);
+        uint256 vaultBefore = vault.balanceOfVault();
+
+        vm.prank(challenger);
+        uint256 challengeId = cm.challenge(gratis, "ipfs://bukti");
+        vm.warp(block.timestamp + 48 hours);
+
+        vm.expectEmit(true, true, false, true);
+        emit CachetVault.ClaimSkippedNoCoverage(gratis, buyer, DECLARED);
+
+        vm.prank(resolver);
+        cm.resolve(challengeId, true, "ipfs://putusan");
+
+        assertEq(usdt.balanceOf(buyer), buyerBefore, "TIDAK ADA BOND, TIDAK ADA COVERAGE");
+        assertGe(
+            vault.balanceOfVault() + CHALLENGE_BOND, vaultBefore, "dana sertifikat lain tidak boleh tergerus"
+        );
+    }
+
     function test_KlaimTepatDiAwalCoverage_Dibayar() public {
         uint256 certId = _mintTo(buyer);
         ICachetCertificate.CertData memory d = cert.certData(certId);
@@ -584,18 +620,87 @@ contract IntegrationTest is Test {
     // Invariant §9.1 ditegakkan Vault sendiri
     // ═════════════════════════════════════════════════════════════════════════
 
-    function test_RevertWhen_VaultDipanggilLangsungDenganHolderPalsu() public {
-        uint256 certId = _mintTo(creator);
-
-        // Bahkan bila ChallengeManager nakal, Vault menolak holder yang salah.
-        vm.prank(owner);
-        vault.setChallengeManager(owner);
+    /// @notice Menutup jalur pengurasan yang terbukti saat audit: owner
+    ///         mengganti ChallengeManager ke kontrak jahat lalu memanggil
+    ///         `settleChallengeWon` untuk dirinya sendiri. Modal 6 USDT, hasil
+    ///         sampai seluruh saldo vault, dalam satu transaksi.
+    ///         Setelah set-once, jalur itu tidak dipersulit -- ia tidak ada.
+    function test_WiringTerkunci_OwnerTidakBisaMerebutJalurDana() public {
+        address jahat = makeAddr("kontrakJahat");
 
         vm.expectRevert(
-            abi.encodeWithSelector(CachetVault.HolderMismatch.selector, certId, challenger, creator)
+            abi.encodeWithSelector(CachetGoverned.AlreadyWired.selector, "vault.challengeManager")
         );
         vm.prank(owner);
-        vault.settleChallengeWon(certId, 1, challenger, challenger);
+        vault.setChallengeManager(jahat);
+
+        assertEq(vault.challengeManager(), address(cm), "hanya ChallengeManager asli yang gerakkan dana");
+    }
+
+    function test_SeluruhWiringTerkunciSetelahDeploy() public {
+        address x = makeAddr("x");
+        vm.startPrank(owner);
+
+        vm.expectRevert(abi.encodeWithSelector(CachetGoverned.AlreadyWired.selector, "registry.gateway"));
+        reg.setGateway(x);
+
+        vm.expectRevert(abi.encodeWithSelector(CachetGoverned.AlreadyWired.selector, "certificate.gateway"));
+        cert.setGateway(x);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(CachetGoverned.AlreadyWired.selector, "certificate.challengeManager")
+        );
+        cert.setChallengeManager(x);
+
+        vm.expectRevert(abi.encodeWithSelector(CachetGoverned.AlreadyWired.selector, "certificate.registry"));
+        cert.setRegistry(x);
+
+        vm.expectRevert(abi.encodeWithSelector(CachetGoverned.AlreadyWired.selector, "certificate.vault"));
+        cert.setVault(x);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(CachetGoverned.AlreadyWired.selector, "challengeManager.resolver")
+        );
+        cm.setResolver(x);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(CachetGoverned.AlreadyWired.selector, "challengeManager.certificate")
+        );
+        cm.setCertificate(x);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(CachetGoverned.AlreadyWired.selector, "challengeManager.vault")
+        );
+        cm.setVault(x);
+
+        vm.stopPrank();
+    }
+
+    /// @dev Yang BEKU adalah siapa yang berwenang; berapa besarannya tetap
+    ///      bisa disetel dalam pagar masing-masing (secara sengaja, §5.0).
+    function test_ParameterTetapBisaDisetelWalauWiringTerkunci() public {
+        vm.startPrank(owner);
+        cert.setWaitingPeriod(1 hours);
+        cert.setMaxDeclaredValue(200e6);
+        vault.setPremiumBps(300);
+        cm.setLivenessWindow(6 hours);
+        vm.stopPrank();
+
+        assertEq(cert.waitingPeriod(), 1 hours);
+        assertEq(cert.maxDeclaredValue(), 200e6);
+        assertEq(vault.premiumBps(), 300);
+        assertEq(cm.livenessWindow(), 6 hours);
+    }
+
+    function test_RevertWhen_MaxDeclaredValueMelebihiPagar() public {
+        uint256 tooMuch = cert.MAX_DECLARED_VALUE_CEILING() + 1;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CachetCertificate.ValueOutOfRange.selector, tooMuch, cert.MAX_DECLARED_VALUE_CEILING()
+            )
+        );
+        vm.prank(owner);
+        cert.setMaxDeclaredValue(tooMuch);
     }
 
     function test_RevertWhen_NonCertificateMemanggilCollectOnMint() public {

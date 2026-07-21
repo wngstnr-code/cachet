@@ -32,7 +32,7 @@ contract ChallengeManagerTest is Test {
         usdt = new MockUSDT();
         reg = new CachetRegistry(owner);
         cert = new CachetCertificate(owner);
-        vault = new CachetVault(owner, address(usdt));
+        vault = new CachetVault(owner, address(usdt), address(cert));
         cm = new ChallengeManager(owner);
 
         vm.startPrank(owner);
@@ -41,7 +41,6 @@ contract ChallengeManagerTest is Test {
         cert.setChallengeManager(address(cm));
         cert.setRegistry(address(reg));
         cert.setVault(address(vault));
-        vault.setCertificate(address(cert));
         vault.setChallengeManager(address(cm));
         cm.setResolver(resolver);
         cm.setCertificate(address(cert));

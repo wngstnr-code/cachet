@@ -32,7 +32,12 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
     IERC20 private immutable _payToken;
 
     /// @notice Kontrak CachetCertificate — sumber kebenaran `ownerOf` & `certData`.
-    address public certificate;
+    /// @dev IMMUTABLE, ditetapkan saat deploy. Audit menemukan: bila alamat ini
+    ///      bisa diganti, owner tinggal mengarahkannya ke kontrak palsu yang
+    ///      melaporkan `ownerOf` dan `certData` sesukanya, lalu menguras vault
+    ///      ke dirinya sendiri. Terbukti di probe: owner menerima 105 USDT dari
+    ///      dana orang lain. Membuatnya immutable menutup jalur itu sepenuhnya.
+    address public immutable certificate;
     /// @notice Kontrak ChallengeManager — satu-satunya yang boleh menggerakkan dana klaim.
     address public challengeManager;
 
@@ -68,7 +73,6 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
     error WrongPremium(uint256 got, uint256 expected);
     error ParamOutOfRange(uint256 value, uint256 max);
 
-    event CertificateSet(address indexed previous, address indexed current);
     event ChallengeManagerSet(address indexed previous, address indexed current);
     event CollectedOnMint(uint256 indexed certId, address indexed payer, uint256 fraudBond, uint256 premium);
     event ChallengeBondCollected(uint256 indexed challengeId, address indexed challenger, uint256 amount);
@@ -101,21 +105,24 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
         _;
     }
 
-    constructor(address owner_, address payToken_) CachetGoverned(owner_) {
+    /// @param certificate_ alamat CachetCertificate. Harus sudah ter-deploy —
+    ///        Certificate tidak membutuhkan Vault saat konstruksi, jadi urutan
+    ///        deploy-nya: Certificate dulu, baru Vault.
+    constructor(address owner_, address payToken_, address certificate_) CachetGoverned(owner_) {
         if (payToken_ == address(0)) revert ZeroAddress();
+        if (certificate_ == address(0)) revert ZeroAddress();
         _payToken = IERC20(payToken_);
+        certificate = certificate_;
     }
 
     // ── Wiring ───────────────────────────────────────────────────────────────
 
-    function setCertificate(address certificate_) external onlyOwner {
-        if (certificate_ == address(0)) revert ZeroAddress();
-        emit CertificateSet(certificate, certificate_);
-        certificate = certificate_;
-    }
-
+    /// @dev SET-ONCE. Ini setter paling kritis di seluruh sistem: sebelum
+    ///      dikunci, owner bisa mengarahkannya ke kontrak jahat lalu memanggil
+    ///      `settleChallengeWon` untuk dirinya sendiri.
     function setChallengeManager(address cm_) external onlyOwner {
         if (cm_ == address(0)) revert ZeroAddress();
+        _lockWiring(challengeManager, "vault.challengeManager");
         emit ChallengeManagerSet(challengeManager, cm_);
         challengeManager = cm_;
     }
@@ -248,7 +255,7 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
         uint256 declaredValue = d.declaredValue;
         uint256 paid = 0;
 
-        if (_coverageApplies(d)) {
+        if (_coverageApplies(certId, d)) {
             paid = _pay(certHolder, declaredValue);
             if (paid < declaredValue) emit PartialPayout(certId, declaredValue, paid);
             emit ClaimPaid(certId, certHolder, paid);
@@ -316,7 +323,23 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
     ///
     ///      Sertifikat yang sudah dicabut sebelumnya tidak mungkin sampai ke
     ///      sini: `challenge()` menolaknya lebih dulu.
-    function _coverageApplies(ICachetCertificate.CertData memory d) private view returns (bool) {
+    function _coverageApplies(uint256 certId, ICachetCertificate.CertData memory d)
+        private
+        view
+        returns (bool)
+    {
+        // TIDAK ADA BOND, TIDAK ADA COVERAGE.
+        //
+        // Ditemukan saat audit lintas-kontrak: `mintCertificate` (jalur
+        // test/darurat) menerbitkan sertifikat TANPA memanggil `collectOnMint`.
+        // Sebelum cek ini, sertifikat semacam itu tetap dibayar penuh — dari
+        // premi milik sertifikat lain dan modal awal operator. Gateway yang
+        // keliru satu kali bisa menguras vault orang lain.
+        //
+        // Prinsipnya sama dengan verifikasi premi di `collectOnMint`: jaminan
+        // tidak boleh bergantung pada kedisiplinan gateway.
+        if (!certFunds[certId].collected) return false;
+
         if (!d.insurable) return false;
         // forge-lint: disable-next-line(block-timestamp)
         return block.timestamp >= d.coverageStart && block.timestamp <= d.coverageEnd;

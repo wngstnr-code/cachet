@@ -32,7 +32,7 @@ contract CachetVaultTest is Test {
         usdt = new MockUSDT();
         reg = new CachetRegistry(owner);
         cert = new CachetCertificate(owner);
-        vault = new CachetVault(owner, address(usdt));
+        vault = new CachetVault(owner, address(usdt), address(cert));
 
         vm.startPrank(owner);
         reg.setGateway(address(cert));
@@ -40,7 +40,6 @@ contract CachetVaultTest is Test {
         cert.setChallengeManager(cm);
         cert.setRegistry(address(reg));
         cert.setVault(address(vault));
-        vault.setCertificate(address(cert));
         vault.setChallengeManager(cm);
         vm.stopPrank();
 
@@ -72,17 +71,28 @@ contract CachetVaultTest is Test {
 
     function test_RevertWhen_PayTokenNol() public {
         vm.expectRevert(CachetGoverned.ZeroAddress.selector);
-        new CachetVault(owner, address(0));
+        new CachetVault(owner, address(0), address(cert));
     }
 
-    function test_PayTokenImmutable() public view {
+    function test_RevertWhen_CertificateNol() public {
+        vm.expectRevert(CachetGoverned.ZeroAddress.selector);
+        new CachetVault(owner, address(usdt), address(0));
+    }
+
+    function test_PayTokenDanCertificateImmutable() public view {
         assertEq(vault.payToken(), address(usdt));
+        assertEq(vault.certificate(), address(cert));
+    }
+
+    /// @dev Alamat Certificate SENGAJA immutable. Audit membuktikan: bila bisa
+    ///      diganti, owner tinggal mengarahkannya ke kontrak palsu yang
+    ///      melaporkan ownerOf & certData sesukanya, lalu menguras vault.
+    function test_TidakAdaSetterUntukCertificate() public view {
+        assertEq(vault.certificate(), address(cert), "hanya bisa ditetapkan saat deploy");
     }
 
     function test_RevertWhen_SetterDiberiAddressNol() public {
         vm.startPrank(owner);
-        vm.expectRevert(CachetGoverned.ZeroAddress.selector);
-        vault.setCertificate(address(0));
         vm.expectRevert(CachetGoverned.ZeroAddress.selector);
         vault.setChallengeManager(address(0));
         vm.stopPrank();
@@ -91,8 +101,6 @@ contract CachetVaultTest is Test {
     function test_RevertWhen_NonOwnerWiring() public {
         bytes memory err = abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, stranger);
         vm.startPrank(stranger);
-        vm.expectRevert(err);
-        vault.setCertificate(stranger);
         vm.expectRevert(err);
         vault.setChallengeManager(stranger);
         vm.expectRevert(err);
