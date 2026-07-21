@@ -77,6 +77,23 @@ contract MockUSDTTest is Test {
         assertEq(usdt.balanceOf(alice), cap);
     }
 
+    /// @dev Mendokumentasikan batasan yang DISENGAJA: cap berlaku per panggilan,
+    ///      bukan kumulatif, jadi siapa pun bisa memanggil berulang kali. Cap ini
+    ///      anti-kecerobohan (biar totalSupply tidak konyol di explorer), BUKAN
+    ///      anti-penyalahgunaan. Token testnet ini memang tak bernilai.
+    function test_CapBerlakuPerPanggilan_BukanKumulatif() public {
+        uint256 cap = usdt.MAX_FAUCET_AMOUNT();
+        usdt.mint(alice, cap);
+        usdt.mint(alice, cap);
+        usdt.mint(alice, cap);
+        assertEq(usdt.balanceOf(alice), 3 * cap, "cap sengaja bisa dilewati dengan panggilan berulang");
+    }
+
+    function test_RevertWhen_MintKeAddressNol() public {
+        vm.expectRevert(); // OZ5: ERC20InvalidReceiver
+        usdt.mint(address(0), 1e6);
+    }
+
     // ── Perilaku ERC-20 yang dipakai Vault ───────────────────────────────────
     // Vault memakai transferFrom untuk menarik fraud bond, premi, dan challenge
     // bond. Alur approve→transferFrom harus terbukti jalan sebelum B2 dibangun.
@@ -110,6 +127,42 @@ contract MockUSDTTest is Test {
         // jadi tidak ada nilai yang dikembalikan.
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         usdt.transferFrom(alice, vault, 10e6);
+    }
+
+    /// @dev Pola persis yang dipakai gateway per RFC-001 P1: approve SEKALI di
+    ///      awal dengan allowance besar, lalu banyak mint tanpa approve ulang.
+    ///      OZ5 tidak mengurangi allowance bila nilainya type(uint256).max —
+    ///      kalau perilaku ini berubah, alur mint Person A ikut rusak.
+    function test_AllowanceMaxTidakBerkurang_PolaGatewayRFC001() public {
+        address vault = makeAddr("vault");
+        usdt.mint(alice, 1000e6);
+
+        vm.prank(alice);
+        usdt.approve(vault, type(uint256).max);
+
+        vm.startPrank(vault);
+        assertTrue(usdt.transferFrom(alice, vault, 100e6));
+        assertTrue(usdt.transferFrom(alice, vault, 100e6));
+        vm.stopPrank();
+
+        assertEq(
+            usdt.allowance(alice, vault), type(uint256).max, "allowance tak terbatas tidak boleh berkurang"
+        );
+        assertEq(usdt.balanceOf(vault), 200e6);
+    }
+
+    /// @dev ⚠️ DIVERGENSI DARI USDT ASLI. Tether di Ethereum menolak approve
+    ///      dari nilai non-nol ke non-nol (wajib reset ke 0 dulu). MockUSDT
+    ///      mengizinkannya karena ERC-20 standar OZ. Artinya kode yang lolos di
+    ///      sini BELUM tentu jalan bila flag §10 diputar ke mainnet dengan USDT
+    ///      asli. Mitigasi: selalu SafeERC20 + forceApprove di kontrak inti.
+    function test_ApproveNonZeroKeNonZero_LebihPermisifDariUsdtAsli() public {
+        address vault = makeAddr("vault");
+        vm.startPrank(alice);
+        usdt.approve(vault, 100e6);
+        usdt.approve(vault, 200e6); // USDT asli di ETH: revert. Di sini: lolos.
+        vm.stopPrank();
+        assertEq(usdt.allowance(alice, vault), 200e6);
     }
 
     // ── Fuzz ─────────────────────────────────────────────────────────────────
