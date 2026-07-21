@@ -7,6 +7,18 @@
 
 ---
 
+## 0. ⚠️ KEAMANAN SECRETS SEBELUM PUSH (kerjakan PERTAMA, sebelum coding apa pun)
+
+> Pelajaran dari repo referensi (Veritas/Luber): file `env-*.txt` berisi secret asli pernah ter-stage di git index. **Jangan terulang di Cachet.**
+
+1. **`.gitignore` wajib** di tiap repo (`cachet/`, `cachet-contracts/`, `cachet-cert-page/`) sejak commit pertama: pola `.env`, `.env.*`, `env-*.txt`, `*.local`, dengan pengecualian `!.env.example`. (Repo monorepo ini sudah punya `.gitignore` yang benar — pertahankan.)
+2. **Sediakan `.env.example` tanpa nilai asli** di tiap repo (template lengkap di §8) — satu-satunya file env yang boleh di-commit.
+3. **Rotasi key** apa pun yang pernah telanjur ter-commit di repo lama/referensi (API key, kredensial Supabase, private key) — anggap sudah bocor.
+4. **Wallet baru khusus testnet** untuk gateway, resolver, dan deployer — **tiga key terpisah** (selaras invariant §9.6), bukan reuse key lama, bukan wallet berisi dana mainnet.
+5. Sebelum push pertama: `git status --ignored` → pastikan tidak ada file env/secret di daftar staged.
+
+---
+
 ## 1. KONTEKS & TUJUAN
 
 ### 1.1 Apa yang dibangun
@@ -59,6 +71,19 @@ Dibangun beneran (end-to-end):
 ### 1.4 Keputusan teknis terkunci
 
 - **Chain: X Layer** (EVM, gas OKB). Development & testing di **X Layer Testnet**; deploy final ke testnet dulu, pindah mainnet hanya jika waktu tersisa & gas tersedia (lihat Open Flags §10).
+
+  **Tabel referensi chain (satu sumber kebenaran — semua konfigurasi merujuk ke sini):**
+
+  | | **X Layer Testnet** (default MVP) | X Layer Mainnet (hanya bila flag §10) |
+  |---|---|---|
+  | chainId | **195** | 196 |
+  | Gas token | **OKB testnet** (bukan ETH!) | OKB |
+  | RPC | `https://testrpc.xlayer.tech` | `https://rpc.xlayer.tech` |
+  | Explorer | `https://www.okx.com/web3/explorer/xlayer-test` | `https://www.okx.com/web3/explorer/xlayer` |
+  | Faucet | `okx.com/xlayer/faucet` (OKB testnet) | — |
+  | Payment token | **MockUSDT** (B deploy sendiri + faucet publik, §5-B1) | USDT asli |
+
+  > ⚠️ **VERIFIKASI SEBELUM PAKAI:** RPC/endpoint testnet pernah berubah — cek ulang di `web3.okx.com/xlayer` saat H1. Semua alamat kontrak & RPC via `.env`, **JANGAN hardcode** di kode. Faucet OKB: minta di **H1 untuk semua wallet sekaligus** (gateway, deployer, resolver, wallet "pembeli" demo) — jangan mendadak H5.
 - **Kode: hybrid** — Person A me-reuse logika dari repo Veritas milik Dien (pHash Gen1, pola oracle UHI9) sebagai **referensi internal A saja**. Kontrak & service ditulis baru, bersih, khusus Cachet.
 - **Bahasa/stack:** Solidity + Foundry (B) · Python FastAPI (engine, A) · Node/TypeScript Fastify (gateway/MCP/x402, A) · site statis viem (cert page, B).
 
@@ -399,17 +424,19 @@ Checklist urut (perkiraan setengah hari kerja bersama):
 
 ## 7. TIMELINE (deadline submit: 27 Jul 22:59 UTC; target ASP live: 25 Jul)
 
-| Hari | Person A (Dien) | Person B (teman) |
-|---|---|---|
-| **H1 (21/7)** | Sepakati §3 · scaffold engine (A1) · kirim address signer ke B | Sepakati §3 · Foundry setup + MockUSDT (B1) · mulai kontrak (B2) |
-| **H2 (22/7)** | Selesaikan A1 + pre-seed & fixture (A2) · mulai gateway (A3) | Lanjut B2 (4 kontrak + test) |
-| **H3 (23/7)** | Selesaikan gateway + stub e2e (A3) · mulai Watch (A4) | Selesaikan B2 · deploy testnet · **serahkan ABI+addresses malam ini** · mulai cert page (B3) |
-| **H4 (24/7)** | Integrasi viem (A5) · selesaikan Watch | Selesaikan cert page (B3) · demo script (B4) |
-| **H5 (25/7)** | **Smoke test bersama (§6)** · deploy publik · **daftar ASP okx.ai → antre review ≤24 jam** | Smoke test bersama · runbook resolver · polish cert page |
-| **H6 (26/7)** | ASP live → rekam demo, post X (lihat delivery plan) | Bantu rekaman skenario on-chain · standby fix |
-| **H7 (27/7)** | Google Form sebelum 22:59 UTC + buffer | standby |
+> Tiap hari ada **Gate** (go/no-go). Gate gagal > ½ hari → langsung jalankan aturan potong-scope di bawah (keputusan potong = Dien), **jangan geser hari submit**.
 
-**Aturan potong-scope kalau telat (urutan buang):** 1) Watch otomatis → jadi tombol "re-scan now" manual; 2) commit-reveal → dokumentasikan saja (kontraknya tetap ada, UI-nya belakangan); 3) C2PA reader → laporkan `not_checked`. **Golden Path 4 langkah TIDAK BOLEH dipotong.**
+| Hari | Person A (Dien) | Person B (teman) | **Gate (go/no-go)** |
+|---|---|---|---|
+| **H1 (21/7)** | Sepakati §3 · scaffold engine (A1) · kirim address signer ke B | Sepakati §3 · Foundry setup + MockUSDT (B1) · mulai kontrak (B2) | §3 beku · repo hidup + `.gitignore`/§0 beres · signer address di tangan B · faucet OKB semua wallet |
+| **H2 (22/7)** | Selesaikan A1 + pre-seed & fixture (A2) · mulai gateway (A3) | Lanjut B2 (4 kontrak + test) | A: `pytest` A1 hijau + fixture *the catch* tertangkap · B: 4 kontrak ter-compile, test happy-path jalan |
+| **H3 (23/7)** | Selesaikan gateway + stub e2e (A3) · mulai Watch (A4) | Selesaikan B2 · deploy testnet · **serahkan ABI+addresses malam ini** | A: e2e stub verify→mint→get_cert jalan + 402 enforced · **B: `forge test` hijau semua + ABI+addresses diserahkan** |
+| **H4 (24/7)** | Integrasi viem (A5) · selesaikan Watch | Selesaikan cert page (B3) · demo script (B4) | A: mint nyata di testnet, NFT terlihat di explorer · B: `/cert/:id` tampil benar |
+| **H5 (25/7)** | **Smoke test bersama (§6)** · deploy publik · **daftar ASP okx.ai → antre review ≤24 jam** | Smoke test bersama · runbook resolver · polish cert page | 🔗 Checklist §6 hijau semua · gateway publik HTTPS · **ASP tersubmit ≤ siang WIB** |
+| **H6 (26/7)** | ASP live → rekam demo, post X (lihat delivery plan) | Bantu rekaman skenario on-chain · standby fix | ASP LIVE · video terekam · post X naik |
+| **H7 (27/7)** | Google Form sebelum 22:59 UTC + buffer | standby | Form terkirim ✅ |
+
+**Aturan potong-scope kalau telat (urutan buang):** 1) Watch otomatis → jadi tombol "re-scan now" manual; 2) commit-reveal → dokumentasikan saja (kontraknya tetap ada, UI-nya belakangan); 3) C2PA reader → laporkan `not_checked`. **Golden Path 4 langkah TIDAK BOLEH dipotong.** Scope minimum untuk tetap LIVE di okx.ai: `verify_originality` + `get_certificate` (lihat §12).
 
 ---
 
@@ -423,6 +450,45 @@ Checklist urut (perkiraan setengah hari kerja bersama):
 | Kontrak | Solidity 0.8.24, Foundry, OpenZeppelin 5 | `DEPLOYER_PK`, `RESOLVER_ADDR`, `GATEWAY_ADDR` |
 | Cert page | Vite, TS, viem (read-only) | `VITE_RPC_URL`, `VITE_ADDRESSES` |
 | Hosting | Railway/Fly (A) · Vercel/Netlify (B) | |
+
+### 8.1 `.env.example` — Workstream A (`cachet/`, commit tanpa nilai)
+
+```bash
+# Chain (X Layer Testnet — tabel §1.4)
+RPC_URL=https://testrpc.xlayer.tech
+CHAIN_ID=195
+GATEWAY_PK=                       # wallet gateway BARU, testnet-only (§0)
+# Alamat kontrak (isi dari addresses.testnet.json kiriman B, H3 malam)
+ADDR_REGISTRY= ADDR_CERTIFICATE= ADDR_VAULT= ADDR_CHALLENGE= ADDR_MOCKUSDT=
+# Services
+ENGINE_PORT=8100
+ENGINE_URL=http://localhost:8100
+INDEX_PATH=./data/index
+GATEWAY_PORT=8787
+CERT_PAGE_BASE=                   # URL pattern dari B, H4 (https://…/cert/:id)
+# x402 (OKX Payment SDK)
+X402_BYPASS=0                     # 1 = dev lokal saja; WAJIB 0 saat listing
+# Watch
+CRON_SCHEDULE=0 */6 * * *
+WEBHOOK_URL=
+# Demo
+DEMO_MODE=0                       # 1 = balas dari fixture (jaring pengaman, §13)
+```
+
+### 8.2 `.env.example` — Workstream B (`cachet-contracts/` & `cachet-cert-page/`, commit tanpa nilai)
+
+```bash
+# cachet-contracts (Foundry)
+RPC_URL=https://testrpc.xlayer.tech
+CHAIN_ID=195
+DEPLOYER_PK=                      # wallet deployer BARU, testnet-only (§0)
+RESOLVER_ADDR=                    # wallet resolver — TERPISAH dari deployer & gateway (§9.6)
+GATEWAY_ADDR=                     # address signer gateway dari A (H1)
+
+# cachet-cert-page (Vite)
+VITE_RPC_URL=https://testrpc.xlayer.tech
+VITE_ADDRESSES=                   # path/isi addresses.testnet.json
+```
 
 ---
 
@@ -450,4 +516,65 @@ Checklist urut (perkiraan setengah hari kerja bersama):
 
 ---
 
-*Dokumen delivery (registrasi ASP, video demo, README, X post, Google Form) → `delivery_implementation_plan.md` di folder yang sama.*
+## 11. PEMBAGIAN TUGAS — DUA ORANG, DUA AI (maksimal independen)
+
+Proyek dikerjakan **2 orang**, masing-masing dengan AI coding agent-nya sendiri (**Claude Code atau Codex** — bebas, satu orang satu agent). Prinsip utama: **dua AI tidak boleh mengedit file yang sama** → pembagian dibuat **per-repo** (lebih keras dari per-direktori), dan batas antar-orang = **§3 Interface Freeze**. Setelah §3 disepakati H1, keduanya membangun & menguji **sendiri-sendiri** — satu-satunya momen wajib bertemu = serah-terima ABI (H3 malam) dan smoke test bersama (H5).
+
+### 11.1 Matriks kepemilikan (nol tabrakan file)
+
+| | **PERSON A — Dien ("Off-chain Brain")** | **PERSON B — teman ("On-chain & Proof Page")** |
+|---|---|---|
+| AI agent | Claude Code / Codex (pilih satu) | Claude Code / Codex (pilih satu) |
+| Stack | Python (engine) + Node/TS (gateway, watch) | Solidity/Foundry + Vite/viem |
+| Repo **milik** | `cachet/` — `engine/`, `gateway/`, `watch/`, `scripts/` | `cachet-contracts/` + `cachet-cert-page/` |
+| Tugas | A1 Engine · A2 Pre-seed · A3 Gateway+x402 · A4 Watch · A5 Integrasi+ASP (§4) | B1 Foundry+MockUSDT · B2 4 kontrak+test · B3 Cert page · B4 Demo script+runbook (§5) |
+| Bergantung ke lawan lewat | ABI + `addresses.testnet.json` (H3 malam) — sebelum itu pakai **stub §11.3** | Address signer gateway (H1) — setelah itu **nol dependency** ke A |
+
+**Aturan keras:** AI milik A tidak pernah membuka/mengedit repo B, dan sebaliknya. Kebutuhan lintas-repo diselesaikan lewat artefak §11.2, bukan lewat edit langsung.
+
+### 11.2 Titik temu (HANYA 3 — jaga ketat, jangan tambah)
+
+1. **§3.1 Solidity interfaces + §3.2 JSON schema** — dibekukan H1. B implement persis; A compile sendiri jadi ABI stub. Perubahan = sepakat dua pihak + 1 baris changelog di §3 **sebelum** kode diubah.
+2. **`abi/*.json` + `addresses.testnet.json` + address MockUSDT** — B → A, **H3 malam** (satu-satunya blocking nyata di seluruh timeline).
+3. **Address signer gateway** (A → B, H1, untuk `onlyGateway`) + **URL pattern cert page** (B → A, H4, untuk response mint).
+
+### 11.3 Stub handshake (nol saling tunggu sampai integrasi)
+
+- **A tidak menunggu B:** H1, A compile interface §3.1 → ABI stub sendiri + implement `ChainClient` **in-memory** (A3.4): mint/register/challenge disimulasikan di memori dengan state konsisten. Seluruh A1–A4 dibangun & di-test atas stub ini; swap ke viem hanya di A5. A juga commit contoh `addresses.testnet.json` **bentuk final** (nilai dummy) supaya format serah-terima H3 sudah pasti.
+- **B tidak menunggu A sama sekali:** cert page membaca **langsung dari chain** (by design §2); satu-satunya input dari A = address signer (H1, cuma sebuah address string). Untuk menampilkan Originality Profile di cert page (opsional), B pakai fixture JSON contoh sesuai §3.2 — tidak perlu gateway A hidup.
+- **Konsekuensi:** H1–H3 = **nol blocking dua arah**. Blocking pertama & satu-satunya = artefak #2 (§11.2) di H3 malam; kalau B telat, A tetap jalan atas stub dan integrasi mundur ke H4 pagi tanpa mengubah gate H5.
+
+### 11.4 Koordinasi harian & git workflow
+
+- **Branch per orang:** `feat/a-*` (A) dan `feat/b-*` (B) → merge ke `main` repo masing-masing via PR kecil. (Karena repo terpisah, konflik git antar-orang mustahil by design.)
+- **File titik-temu** (§3 di dokumen ini, `abi/`, `addresses.testnet.json`) = **wajib review orang satunya** sebelum dianggap sah.
+- **Mau ubah titik-temu?** Tulis 1 baris changelog di §3 dokumen ini **dulu** (apa yang berubah + kenapa), baru kode. Tanpa changelog = perubahan tidak berlaku.
+- **Sync harian ≤10 menit:** cek status **Gate** hari itu (§7). Gate merah → putuskan potong-scope saat itu juga (keputusan Dien), jangan dibawa tidur.
+
+---
+
+## 12. RISIKO BUILD & MITIGASI
+
+| Risiko | Mitigasi |
+|---|---|
+| x402 / OKX Payment SDK macet | Kerjakan di H3 (bukan H5); buntu → konsultasi skill `okx-agent-payments-protocol`; jalur darurat: listing tools **gratis dulu** supaya LIVE, harga menyusul — **keputusan eskalasi ke Dien**. |
+| RPC X Layer testnet flaky saat rekaman | `DEMO_MODE` fixture (§13) selalu siap; rekam segmen saat jalur nyata sukses; retry viem + timeout longgar di gateway. |
+| Review ASP okx.ai > 24 jam / minta revisi | Submit **H5 ≤ siang WIB** (buffer ~2×24 jam); scope minimum LIVE = `verify_originality` + `get_certificate`. |
+| open_clip/FAISS berat atau lambat di host | Tetap ViT-B/32 CPU (default §10); embedding korpus di-precompute offline lalu di-upload; kueri pHash = numpy XOR+popcount (cepat). |
+| Pre-seed korpus gagal fetch (rate-limit API marketplace) | Turunkan target ke ≥1k entri (disclosure jujur soal cakupan); fixture demo *the catch* **tetap wajib** tertangkap. |
+| Faucet OKB kering / lambat | Minta di **H1** untuk semua wallet sekaligus (gateway, deployer, resolver, pembeli demo) — sudah jadi gate H1 (§7). |
+| ABI telat diserahkan (gate H3 gagal) | A tetap produktif atas stub (§11.3); integrasi mundur ke H4 pagi; telat > ½ hari → potong-scope urutan §7. |
+| Dua AI menimpa file yang sama | §11: repo terpisah per orang + titik temu hanya 3 + wajib review PR untuk file titik-temu. |
+| Alamat/RPC testnet berubah | Verifikasi §1.4 di H1; semua via `.env` (§8), tak ada hardcode. |
+
+---
+
+## 13. DEMO_MODE (jaring pengaman demo — bukan untuk mengelabui)
+
+- **Gateway** (`DEMO_MODE=1`): endpoint membalas dari **fixture tersimpan** — profile ORIGINAL, profile NEAR_DUP (*the catch*), CertData contoh — tanpa menyentuh engine/chain. Untuk latihan alur video & fallback bila RPC/engine rewel tepat saat rekaman. Fixture disimpan di `gateway/fixtures/` dan dijaga konsisten dengan skema §3.2.
+- **On-chain:** `script/DemoFlow.s.sol` (B4) = jalur re-run cepat skenario penuh dengan wallet segar; bila perlu, segmen on-chain direkam terpisah dari segmen verify lalu disunting berurutan.
+- **Aturan jujur (WAJIB):** video/demo final memakai **jalur nyata** bila lolos; DEMO_MODE hanya cadangan latihan/darurat dan **tidak pernah diklaim sebagai transaksi live**. `X402_BYPASS` dan `DEMO_MODE` **wajib 0** di deployment yang dilisting.
+
+---
+
+*Dokumen delivery (registrasi ASP, video demo, README, X post, Google Form) → `delivery_implementation_plan.md` di folder yang sama. Pembagian tugas & aturan kolaborasi dua-AI → §11; risiko & mitigasi → §12; jaring pengaman demo → §13.*
