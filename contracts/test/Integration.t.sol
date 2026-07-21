@@ -38,7 +38,7 @@ contract IntegrationTest is Test {
         usdt = new MockUSDT();
         reg = new CachetRegistry(owner);
         cert = new CachetCertificate(owner);
-        vault = new CachetVault(owner, address(usdt));
+        vault = new CachetVault(owner, address(usdt), address(cert));
         cm = new ChallengeManager(owner);
 
         vm.startPrank(owner);
@@ -47,7 +47,6 @@ contract IntegrationTest is Test {
         cert.setChallengeManager(address(cm));
         cert.setRegistry(address(reg));
         cert.setVault(address(vault));
-        vault.setCertificate(address(cert));
         vault.setChallengeManager(address(cm));
         cm.setResolver(resolver);
         cm.setCertificate(address(cert));
@@ -318,7 +317,8 @@ contract IntegrationTest is Test {
     function test_DanaVaultKurang_PartialPayout_KlaimTidakTerkunci() public {
         CachetRegistry reg2 = new CachetRegistry(owner);
         CachetCertificate cert2 = new CachetCertificate(owner);
-        CachetVault vault2 = new CachetVault(owner, address(usdt));
+        // Certificate dulu, baru Vault -- alamatnya immutable di Vault.
+        CachetVault vault2 = new CachetVault(owner, address(usdt), address(cert2));
         ChallengeManager cm2 = new ChallengeManager(owner);
 
         vm.startPrank(owner);
@@ -327,7 +327,6 @@ contract IntegrationTest is Test {
         cert2.setChallengeManager(address(cm2));
         cert2.setRegistry(address(reg2));
         cert2.setVault(address(vault2));
-        vault2.setCertificate(address(cert2));
         vault2.setChallengeManager(address(cm2));
         cm2.setResolver(resolver);
         cm2.setCertificate(address(cert2));
@@ -543,6 +542,42 @@ contract IntegrationTest is Test {
             usdt.balanceOf(challenger) - challengerBefore,
             FRAUD_BOND + (PREMIUM / 2),
             "penantang tetap dapat bounty; insentif menangkap pemalsuan tidak boleh hilang"
+        );
+    }
+
+    /// @dev TEMUAN AUDIT LINTAS-KONTRAK. `mintCertificate` (jalur test/darurat)
+    ///      menerbitkan sertifikat TANPA memanggil `collectOnMint`. Sebelum
+    ///      perbaikan, sertifikat semacam itu tetap dibayar penuh — dari premi
+    ///      milik sertifikat lain dan modal awal operator. Satu kekeliruan
+    ///      gateway bisa menguras vault orang lain.
+    function test_CertTanpaBond_TidakDapatKlaim() public {
+        _mintTo(creator); // sertifikat sah, membayar bond + premi
+
+        vm.prank(gateway);
+        uint256 gratis = cert.mintCertificate(buyer, 1, DECLARED, true, "ipfs://meta");
+
+        (,, bool collected,) = vault.certFunds(gratis);
+        assertFalse(collected, "prasyarat: sertifikat ini tidak pernah membayar bond");
+
+        vm.warp(block.timestamp + 73 hours);
+        assertTrue(cert.isCoverageActive(gratis), "Certificate menganggapnya aktif...");
+
+        uint256 buyerBefore = usdt.balanceOf(buyer);
+        uint256 vaultBefore = vault.balanceOfVault();
+
+        vm.prank(challenger);
+        uint256 challengeId = cm.challenge(gratis, "ipfs://bukti");
+        vm.warp(block.timestamp + 48 hours);
+
+        vm.expectEmit(true, true, false, true);
+        emit CachetVault.ClaimSkippedNoCoverage(gratis, buyer, DECLARED);
+
+        vm.prank(resolver);
+        cm.resolve(challengeId, true, "ipfs://putusan");
+
+        assertEq(usdt.balanceOf(buyer), buyerBefore, "TIDAK ADA BOND, TIDAK ADA COVERAGE");
+        assertGe(
+            vault.balanceOfVault() + CHALLENGE_BOND, vaultBefore, "dana sertifikat lain tidak boleh tergerus"
         );
     }
 

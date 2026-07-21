@@ -36,9 +36,12 @@ contract Deploy is Script {
 
         vm.startBroadcast(pk);
 
+        // URUTAN PENTING: Vault menyimpan alamat Certificate secara immutable,
+        // jadi Certificate wajib ter-deploy lebih dulu. Certificate sendiri
+        // tidak butuh Vault saat konstruksi (di-set belakangan).
         CachetRegistry registry = new CachetRegistry(deployer);
         CachetCertificate certificate = new CachetCertificate(deployer);
-        CachetVault vault = new CachetVault(deployer, payTokenAddr);
+        CachetVault vault = new CachetVault(deployer, payTokenAddr, address(certificate));
         ChallengeManager challengeManager = new ChallengeManager(deployer);
 
         // ── Wiring (§3.1) ───────────────────────────────────────────────────
@@ -51,7 +54,6 @@ contract Deploy is Script {
         certificate.setRegistry(address(registry));
         certificate.setVault(address(vault));
 
-        vault.setCertificate(address(certificate));
         vault.setChallengeManager(address(challengeManager));
 
         challengeManager.setResolver(resolverAddr);
