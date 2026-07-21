@@ -46,6 +46,18 @@ contract ChallengeManager is IChallengeManager, CachetGoverned, ReentrancyGuard 
     ///      100 tahun dan membekukan seluruh gugatan yang sedang berjalan.
     uint64 public constant MAX_LIVENESS_WINDOW = 30 days;
 
+    /// @notice LANTAI TERPENTING DI SELURUH SISTEM.
+    /// @dev Jendela liveness adalah satu-satunya rem publik terhadap resolver
+    ///      di MVP. Kalau boleh disetel 0, owner+resolver bisa menerbitkan,
+    ///      menggugat, dan memutus dalam satu blok tanpa jendela pengawasan
+    ///      sama sekali — melubangi mitigasi utama terhadap kolusi.
+    ///      Nilainya = setelan demo, yaitu yang tercepat pernah kami niatkan.
+    uint64 public constant MIN_LIVENESS_WINDOW = 30 seconds;
+
+    /// @notice Lantai bond penantang 1 USDT. Menggugat tidak boleh gratis:
+    ///         gugatan mengunci sertifikat sampai diputus.
+    uint256 public constant MIN_CHALLENGE_BOND = 1e6;
+
     mapping(uint256 => Challenge) private _challenges;
     uint256 private _challengeCount;
 
@@ -106,11 +118,13 @@ contract ChallengeManager is IChallengeManager, CachetGoverned, ReentrancyGuard 
     // ── Parameter (§5.0) ─────────────────────────────────────────────────────
 
     function setChallengeBond(uint256 v) external onlyOwner {
+        if (v < MIN_CHALLENGE_BOND) revert ParamBelowFloor(v, MIN_CHALLENGE_BOND);
         emit ParamChanged("challengeBond", challengeBond, v);
         challengeBond = v;
     }
 
     function setLivenessWindow(uint64 v) external onlyOwner {
+        if (v < MIN_LIVENESS_WINDOW) revert ParamBelowFloor(v, MIN_LIVENESS_WINDOW);
         if (v > MAX_LIVENESS_WINDOW) revert ParamOutOfRange(v, MAX_LIVENESS_WINDOW);
         emit ParamChanged("livenessWindow", livenessWindow, v);
         livenessWindow = v;

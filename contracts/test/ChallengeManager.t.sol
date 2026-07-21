@@ -148,6 +148,49 @@ contract ChallengeManagerTest is Test {
         cm.setLivenessWindow(31 days);
     }
 
+    /// @notice LANTAI TERPENTING DI SELURUH SISTEM.
+    ///         Jendela liveness adalah satu-satunya rem publik terhadap
+    ///         resolver di MVP. Kalau boleh disetel 0, owner+resolver bisa
+    ///         menerbitkan, menggugat, dan memutus dalam satu blok tanpa
+    ///         jendela pengawasan sama sekali.
+    function test_RevertWhen_LivenessDiBawahLantai() public {
+        uint64 floor_ = cm.MIN_LIVENESS_WINDOW();
+
+        vm.expectRevert(abi.encodeWithSelector(CachetGoverned.ParamBelowFloor.selector, 0, floor_));
+        vm.prank(owner);
+        cm.setLivenessWindow(0);
+
+        vm.expectRevert(abi.encodeWithSelector(CachetGoverned.ParamBelowFloor.selector, uint64(1), floor_));
+        vm.prank(owner);
+        cm.setLivenessWindow(1 seconds);
+    }
+
+    function test_LivenessTepatDiLantai_MasihMenahanResolveDini() public {
+        uint64 floor_ = cm.MIN_LIVENESS_WINDOW();
+        vm.prank(owner);
+        cm.setLivenessWindow(floor_);
+
+        uint256 certId = _mint();
+        vm.prank(challenger);
+        uint256 id = cm.challenge(certId, "ipfs://bukti");
+        uint64 openedAt = uint64(block.timestamp);
+
+        // Bahkan di lantai, resolve dini TETAP ditolak -- mekanismenya hidup.
+        vm.warp(openedAt + floor_ - 1);
+        vm.expectRevert(
+            abi.encodeWithSelector(ChallengeManager.LivenessNotElapsed.selector, openedAt, openedAt + floor_)
+        );
+        vm.prank(resolver);
+        cm.resolve(id, true, "ipfs://putusan");
+    }
+
+    function test_RevertWhen_ChallengeBondDiBawahLantai() public {
+        uint256 floor_ = cm.MIN_CHALLENGE_BOND();
+        vm.expectRevert(abi.encodeWithSelector(CachetGoverned.ParamBelowFloor.selector, 0, floor_));
+        vm.prank(owner);
+        cm.setChallengeBond(0);
+    }
+
     function test_LivenessBaruBerlakuUntukGugatanBerikutnya() public {
         uint256 certId = _mint();
         vm.prank(owner);

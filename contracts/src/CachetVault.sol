@@ -51,6 +51,13 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
     /// @dev Pagar sungguhan: premi > 100% membuat mint mustahil dibayar.
     uint256 public constant MAX_PREMIUM_BPS = 10_000;
 
+    /// @notice Lantai premi 0,1%. Tanpa ini jaminan bisa dibuat gratis.
+    uint256 public constant MIN_PREMIUM_BPS = 10;
+    /// @notice Lantai bond kreator 1 USDT. Bond adalah taruhan kreator DAN
+    ///         sumber bounty penantang — nol berarti tidak ada insentif
+    ///         menangkap pemalsuan.
+    uint256 public constant MIN_FRAUD_BOND = 1e6;
+
     // ── Pembukuan ────────────────────────────────────────────────────────────
 
     struct CertFunds {
@@ -130,11 +137,13 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
     // ── Parameter (§5.0) ─────────────────────────────────────────────────────
 
     function setFraudBondAmount(uint256 v) external onlyOwner {
+        if (v < MIN_FRAUD_BOND) revert ParamBelowFloor(v, MIN_FRAUD_BOND);
         emit ParamChanged("fraudBondAmount", fraudBondAmount, v);
         fraudBondAmount = v;
     }
 
     function setPremiumBps(uint256 v) external onlyOwner {
+        if (v < MIN_PREMIUM_BPS) revert ParamBelowFloor(v, MIN_PREMIUM_BPS);
         if (v > MAX_PREMIUM_BPS) revert ParamOutOfRange(v, MAX_PREMIUM_BPS);
         emit ParamChanged("premiumBps", premiumBps, v);
         premiumBps = v;

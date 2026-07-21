@@ -137,6 +137,37 @@ contract CachetVaultTest is Test {
         vault.setPremiumBps(10_001);
     }
 
+    /// @dev LANTAI. `premiumBps = 0` membuat jaminan GRATIS -- mekanisme
+    ///      preminya mati, bukan dimurahkan.
+    function test_RevertWhen_PremiumBpsDiBawahLantai() public {
+        uint256 floor_ = vault.MIN_PREMIUM_BPS();
+        vm.expectRevert(abi.encodeWithSelector(CachetGoverned.ParamBelowFloor.selector, 0, floor_));
+        vm.prank(owner);
+        vault.setPremiumBps(0);
+    }
+
+    /// @dev LANTAI. Bond kreator adalah taruhannya DAN sumber bounty penantang.
+    ///      Nol berarti tidak ada insentif menangkap pemalsuan.
+    function test_RevertWhen_FraudBondDiBawahLantai() public {
+        uint256 floor_ = vault.MIN_FRAUD_BOND();
+        vm.expectRevert(abi.encodeWithSelector(CachetGoverned.ParamBelowFloor.selector, 0, floor_));
+        vm.prank(owner);
+        vault.setFraudBondAmount(0);
+    }
+
+    function test_ParameterTepatDiLantai_Diizinkan() public {
+        uint256 pFloor = vault.MIN_PREMIUM_BPS();
+        uint256 bFloor = vault.MIN_FRAUD_BOND();
+        vm.startPrank(owner);
+        vault.setPremiumBps(pFloor);
+        vault.setFraudBondAmount(bFloor);
+        vm.stopPrank();
+
+        assertEq(vault.premiumBps(), pFloor);
+        assertEq(vault.fraudBondAmount(), bFloor);
+        assertGt(vault.quotePremium(100e6), 0, "di lantai pun premi tetap bukan nol");
+    }
+
     function test_QuotePremiumMembulatKeBawah() public view {
         // RFC-001 P5: integer division, floor. Gateway WAJIB sama persis.
         assertEq(vault.quotePremium(0), 0);
