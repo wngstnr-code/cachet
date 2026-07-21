@@ -34,11 +34,9 @@ npm-debug.log*
 .vscode/
 
 # local agent state
-.lp-guardian/
 
 # CLAUDE.md
-lp_guardian_brief_v5_agentic.md
-lp_guardian_brief_v5_agentic.pdf
-BE_LEAD_HANDOFF.md
-BE_TECHNICAL_REPORT.md
 task.txt
+
+cachet_idea_brief_v1.md
+cachet_idea_v2.md
