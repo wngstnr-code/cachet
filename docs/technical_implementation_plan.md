@@ -434,20 +434,46 @@ Langkah:
 
 **Folder milik B** (di monorepo yang sama, §11.1): `contracts/` (Foundry — termasuk `contracts/script/` untuk deploy & `DemoFlow`) + `apps/web/` (cert page, site statis). B juga yang mengisi `packages/contracts-abi/` (titik temu #2, diserahkan ke A H3 malam).
 
+### 5.0 Dua keputusan yang berlaku untuk SEMUA kontrak (diputuskan H1)
+
+**a) TIDAK upgradeable — tapi parameternya configurable.**
+
+Tidak ada proxy (UUPS/Transparent). Alasannya bukan teknis melainkan produk: klaim Cachet adalah *"jaminan on-chain berkolateral yang bisa dicek siapa pun tanpa percaya Cachet"*. Kontrak upgradeable berarti pemegang admin key bisa menulis ulang logika payout **setelah** sertifikat terjual — dan pertanyaan pertama juri yang paham adalah *"apa yang mencegah kalian mengosongkan Vault?"*. Proyek ini sudah punya satu sentralisasi yang diakui terbuka (resolver MVP); menambah admin upgrade di atas Vault yang memegang uang membuat kata "collateralized" praktis berarti "kami janji".
+
+Sebagai gantinya, semua angka kebijakan jadi **variabel `onlyOwner`, bukan `constant`**:
+
+| Kontrak | Parameter yang bisa disetel |
+|---|---|
+| CachetCertificate | `waitingPeriod` (72 jam) · `coverageTerm` (365 hari) · `maxDeclaredValue` (100e6) |
+| CachetVault | `fraudBond` (5e6) · `premiumBps` (200) |
+| ChallengeManager | `challengeBond` (10e6) · `livenessWindow` (48 jam) |
+
+Batasnya tegas: **parameter boleh berubah, aturan main tidak.** Payout selalu ke `ownerOf(certId)`, apa pun setelan yang berlaku (invariant §9.1). Kalau ada bug fatal sebelum demo: redeploy — tidak ada pengguna nyata, tidak ada uang nyata, biayanya mendekati nol.
+
+Setter parameter **wajib** emit event (`ParamChanged(bytes32 key, uint256 oldValue, uint256 newValue)`) supaya perubahan kebijakan tetap terlacak publik di explorer.
+
+**b) Setiap deploy WAJIB terverifikasi.**
+
+Verifikasi lewat **Sourcify** — gratis, tanpa API key, mendukung chain 1952 & 196. Sudah otomatis di `make deploy-*` (`--verify --verifier sourcify`). Kontrak yang di explorer hanya tampil sebagai bytecode mentah membuat klaim "bisa dicek siapa pun" tidak berdiri sendiri. Cek status: `make verify-status ADDR=0x...`.
+
 ### B1 — Setup Foundry + MockUSDT — Hari 1
 
 1. `forge init`; solc 0.8.24; OpenZeppelin (`ERC721`, `Ownable`, `SafeERC20`).
 2. `MockUSDT.sol`: ERC-20, 6 desimal, fungsi `faucet(address to, uint256 amt)` publik (testnet only).
 3. Konfigurasi X Layer testnet: RPC `https://testrpc.xlayer.tech`, chainId **1952**, explorer `https://www.okx.com/web3/explorer/xlayer-test`. Gas token OKB testnet dari faucet OKX.
 
-**Acceptance:** `forge test` template jalan; MockUSDT ter-deploy di testnet + faucet berfungsi.
+**Acceptance:** `forge test` template jalan; MockUSDT ter-deploy di testnet + faucet berfungsi + **terverifikasi di Sourcify**.
+
+> ✅ **SELESAI 21 Jul.** MockUSDT: `0x9ad14e783DCe270BE1214153E940aa686f91fa40` (chainId 1952),
+> terverifikasi `exact_match` (creation + runtime). 16 test hijau, 0 warning.
+> Bytecode di chain terbukti identik byte-per-byte dengan hasil build dari repo.
 
 ### B2 — Empat kontrak inti — Hari 1–3 (bagian terbesar)
 
 Implementasikan **persis** interface §3.1, ditambah aturan berikut:
 
 1. **CachetRegistry**: `commit()` terbuka untuk siapa pun (murah, hanya simpan `commitHash → timestamp`, tolak overwrite). `register()` `onlyGateway`; bila `revealedCommit != 0x0`, wajib `commitTimestamp[revealedCommit] > 0` dan simpan `commitAt` = timestamp tsb (kontrak TIDAK memverifikasi isi commitment — verifikasi rumus dilakukan gateway; catat trade-off ini di NatSpec).
-2. **CachetCertificate**: ERC-721 standar (transfer = coverage pindah otomatis karena data coverage keyed by tokenId — tak perlu logic tambahan; **jangan** soulbound). Konstanta: `WAITING_PERIOD = 72 hours`, `COVERAGE_TERM = 365 days`, `MAX_DECLARED_VALUE = 100e6`. `mintCertificate` revert bila `declaredValue > MAX_DECLARED_VALUE`. **Tambahan RFC-001 P1:** implement `registerAndMint(MintRequest)` sebagai jalur produksi atomik — internal: `registry.register(…)` → `_mint` → `vault.collectOnMint(certId, gateway, fraudBond, premium)`; satu langkah gagal = seluruh tx revert. Konsekuensi wiring: gateway di Registry = alamat kontrak Certificate ini (lihat tabel §3.1).
+2. **CachetCertificate**: ERC-721 standar (transfer = coverage pindah otomatis karena data coverage keyed by tokenId — tak perlu logic tambahan; **jangan** soulbound). Parameter (variabel `onlyOwner`, **bukan** `constant` — lihat §5.0): `waitingPeriod = 72 hours`, `coverageTerm = 365 days`, `maxDeclaredValue = 100e6`. `registerAndMint`/`mintCertificate` revert bila `declaredValue > maxDeclaredValue`. **Tambahan RFC-001 P1:** implement `registerAndMint(MintRequest)` sebagai jalur produksi atomik — internal: `registry.register(…)` → `_mint` → `vault.collectOnMint(certId, gateway, fraudBond, premium)`; satu langkah gagal = seluruh tx revert. Konsekuensi wiring: gateway di Registry = alamat kontrak Certificate ini (lihat tabel §3.1).
 3. **CachetVault**: pegang MockUSDT. `collectOnMint` = `transferFrom(payer)` fraud bond + premi, book-keep per certId. `settleChallengeWon`: bayar `declaredValue` (atau saldo vault jika kurang — `min()`, dan emit event `PartialPayout` — jujur soal plafon bootstrap) ke `certHolder`… **koreksi**: payout ke **pemegang saat resolve** (ambil `ownerOf(certId)` saat itu, bukan parameter bebas — parameter `certHolder` tetap ada untuk event tapi validasi `require(certHolder == ownerOf)`); bounty penantang = fraud bond certId + 50% premi certId. `settleChallengeLost(certId, challengeId, certHolder)` (P2): bond penantang → 50% `ownerOf(certId)`, 50% tinggal di vault; validasi `require(certHolder == ownerOf(certId))` sama seperti settleChallengeWon.
 4. **ChallengeManager**: `challenge()` siapa pun, syarat `isCoverageActive(certId)` ATAU cert dalam masa hidup (boleh gugat cert tak-insurable untuk mencabut sertifikatnya — payout 0, tapi `revoked` tetap di-set), tarik challenge bond via Vault, status `Open`. `resolve()` `onlyResolver` + `require(block.timestamp >= openedAt + 48 hours || …)` (MVP: cukup tunggu liveness). Menang → `Certificate.markRevoked` + `Vault.settleChallengeWon`. Kalah → `Certificate.incrementSurvived` + `Vault.settleChallengeLost`.
 5. **Deploy script** (`script/Deploy.s.sol`): deploy urut, wire address (`setGateway`, `setChallengeManager`, `setResolver`), tulis `addresses.testnet.json` + export ABI ke `abi/`.
