@@ -37,6 +37,14 @@ remappings = [
 [rpc_endpoints]
 xlayer_testnet = "${RPC_URL}"
 
+# Lint hanya menilai src/ — itu satu-satunya kode yang benar-benar ter-deploy.
+# Test SENGAJA melakukan hal yang dilarang lint: cast uint64(block.timestamp),
+# perbandingan waktu, vm.warp ke nilai ekstrem. Kalau test ikut dinilai, sinyal
+# lint tenggelam dalam derau dan kita berhenti membacanya — persis kegagalan
+# yang ingin dicegah.
+[lint]
+ignore = ["test/*.sol", "test/**/*.sol", "script/*.sol"]
+
 [fmt]
 line_length = 110
 tab_width = 4
