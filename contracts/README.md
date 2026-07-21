@@ -26,11 +26,28 @@ cp ../.env.example ../.env    # lalu isi DEPLOYER_PK, RESOLVER_ADDR, dst.
 git submodule update --init --recursive
 ```
 
-## Isi saat ini (B1 — selesai)
+## Isi saat ini (B1 — selesai & ter-deploy)
 
 | Kontrak | Status | Catatan |
 |---|---|---|
-| `MockUSDT` | ✅ | ERC-20 **6 desimal**, faucet publik, cap 1jt/panggilan |
+| `MockUSDT` | ✅ deployed | ERC-20 **6 desimal**, faucet publik, cap 1jt/panggilan |
+
+### Alamat X Layer Testnet (chainId 1952)
+
+| | |
+|---|---|
+| `MockUSDT` | `0x9ad14e783DCe270BE1214153E940aa686f91fa40` |
+| Explorer | https://www.okx.com/web3/explorer/xlayer-test/address/0x9ad14e783DCe270BE1214153E940aa686f91fa40 |
+| Deployed | 21 Jul 2026, block 36190059 |
+
+**Ambil token gratis** (siapa pun boleh, tanpa izin):
+
+```bash
+cast send 0x9ad14e783DCe270BE1214153E940aa686f91fa40 \
+  'mint(address,uint256)' <ALAMATMU> 1000000000 \
+  --rpc-url https://testrpc.xlayer.tech --private-key $PK
+# 1000000000 = 1000 USDT (6 desimal)
+```
 
 **Kenapa mock, bukan USDT asli:** di testnet tidak ada deployment Tether resmi, dan
 test butuh kontrol penuh atas saldo tiap wallet. Kalau flag §10 diputar ke mainnet
