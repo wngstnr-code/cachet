@@ -17,6 +17,13 @@ venv/
 # move
 contracts/**/build/
 
+# foundry (Person B)
+contracts/out/
+contracts/cache/
+contracts/broadcast/*/dry-run/
+# broadcast/ SELAIN dry-run sengaja di-track: berisi alamat & tx hash hasil
+# deploy testnet — bukti on-chain yang dipakai saat serah-terima H3.
+
 # env — NEVER commit real secrets (private keys, API keys, Supabase creds)
 .env
 .env.local
