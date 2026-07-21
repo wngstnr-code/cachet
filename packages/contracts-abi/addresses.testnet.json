@@ -1,0 +1,53 @@
+{
+  "_comment": "BENTUK FINAL, NILAI BELUM. Kunci dan tipe di file ini tidak akan berubah lagi — Person A boleh menulis ChainClient sekarang. Yang berubah saat deploy hanyalah isi 'contracts' dan 'deployment'.",
+
+  "status": "PENDING_DEPLOY",
+
+  "chain": {
+    "name": "X Layer Testnet",
+    "chainId": 1952,
+    "rpcUrl": "https://testrpc.xlayer.tech",
+    "explorer": "https://www.okx.com/web3/explorer/xlayer-test",
+    "gasToken": "OKB",
+    "_comment": "chainId 1952 (0x7a0), BUKAN 195. Diverifikasi lewat eth_chainId 21 Jul. 195 adalah chainId X1 testnet, nama lama X Layer sebelum rebrand."
+  },
+
+  "contracts": {
+    "registry": "0x0000000000000000000000000000000000000000",
+    "certificate": "0x0000000000000000000000000000000000000000",
+    "vault": "0x0000000000000000000000000000000000000000",
+    "challengeManager": "0x0000000000000000000000000000000000000000",
+    "mockUSDT": "0x9ad14e783DCe270BE1214153E940aa686f91fa40"
+  },
+
+  "roles": {
+    "gateway": "0x0000000000000000000000000000000000000000",
+    "resolver": "0x0000000000000000000000000000000000000000",
+    "_comment": "gateway = wallet Person A, satu-satunya yang boleh memanggil registerAndMint. Alamat ini TERKUNCI saat deploy (set-once) — salah setel berarti redeploy keempat kontrak."
+  },
+
+  "payToken": {
+    "address": "0x9ad14e783DCe270BE1214153E940aa686f91fa40",
+    "symbol": "mUSDT",
+    "decimals": 6,
+    "_comment": "6 DESIMAL, bukan 18. Semua nilai uang di API adalah base unit: 1 USDT = 1000000."
+  },
+
+  "params": {
+    "waitingPeriodSeconds": 259200,
+    "coverageTermSeconds": 31536000,
+    "maxDeclaredValue": "100000000",
+    "fraudBondAmount": "5000000",
+    "premiumBps": 200,
+    "challengeBond": "10000000",
+    "livenessWindowSeconds": 172800,
+    "_comment": "Nilai default kontrak. Bisa berubah lewat setter onlyOwner — BACA DARI CHAIN, jangan hardcode. Saat demo, waitingPeriod & livenessWindow dipercepat (lihat PrepareDemo.s.sol)."
+  },
+
+  "deployment": {
+    "deployedAt": null,
+    "blockNumber": null,
+    "deployerAddress": null,
+    "verifiedOnSourcify": false
+  }
+}

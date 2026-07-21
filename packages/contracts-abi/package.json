@@ -1,0 +1,14 @@
+{
+  "name": "@cachet/contracts-abi",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ABI + alamat kontrak Cachet. Di-generate dari Foundry — jangan edit tangan.",
+  "type": "module",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts",
+    "./abi/*": "./abi/*"
+  },
+  "files": ["index.ts", "abi", "addresses.testnet.json", "README.md"]
+}
