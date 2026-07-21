@@ -76,13 +76,25 @@ Dibangun beneran (end-to-end):
 
   | | **X Layer Testnet** (default MVP) | X Layer Mainnet (hanya bila flag §10) |
   |---|---|---|
-  | chainId | **195** | 196 |
+  | chainId | **1952** (0x7a0 — BUKAN 195; diverifikasi via eth_chainId 21 Jul) | 196 (0xc4, terverifikasi) |
   | Gas token | **OKB testnet** (bukan ETH!) | OKB |
   | RPC | `https://testrpc.xlayer.tech` | `https://rpc.xlayer.tech` |
   | Explorer | `https://www.okx.com/web3/explorer/xlayer-test` | `https://www.okx.com/web3/explorer/xlayer` |
   | Faucet | `okx.com/xlayer/faucet` (OKB testnet) | — |
   | Payment token | **MockUSDT** (B deploy sendiri + faucet publik, §5-B1) | USDT asli |
 
+  > ✅ **TERVERIFIKASI 21 Jul (H1)** lewat `eth_chainId` langsung ke RPC:
+  > testnet `https://testrpc.xlayer.tech` → `0x7a0` = **1952**, mainnet
+  > `https://rpc.xlayer.tech` → `0xc4` = **196**. Dokumen sebelumnya menulis
+  > testnet **195** — itu **SALAH** (195 adalah chainId X1 testnet, nama lama
+  > X Layer sebelum rebrand). Sudah dikoreksi di seluruh dokumen, `.env.example`,
+  > dan deploy script.
+  >
+  > ⚠️ Kenapa ini fatal kalau lolos: chainId ikut ditandatangani di setiap
+  > transaksi (EIP-155). Salah chainId = node menolak tx dengan pesan yang
+  > menyesatkan (sering terbaca sebagai "invalid signature" atau nonce error),
+  > bukan pesan "chainId salah". Sangat mahal didiagnosis saat integrasi.
+  >
   > ⚠️ **VERIFIKASI SEBELUM PAKAI:** RPC/endpoint testnet pernah berubah — cek ulang di `web3.okx.com/xlayer` saat H1. Semua alamat kontrak & RPC via `.env`, **JANGAN hardcode** di kode. Faucet OKB: minta di **H1 untuk semua wallet sekaligus** (gateway, deployer, resolver, wallet "pembeli" demo) — jangan mendadak H5.
 - **Kode: hybrid** — Person A me-reuse logika dari repo Veritas milik Dien (pHash Gen1, pola oracle UHI9) sebagai **referensi internal A saja**. Kontrak & service ditulis baru, bersih, khusus Cachet.
 - **Bahasa/stack:** Solidity + Foundry (B) · Python FastAPI (engine, A) · Node/TypeScript Fastify (gateway/MCP/x402, A) · site statis viem (cert page, B).
@@ -408,7 +420,7 @@ Langkah:
 
 ### A5 — Integrasi chain nyata + ASP okx.ai — Hari 4–5
 
-1. Terima `abi/` + `addresses.testnet.json` dari B → implement `ChainClient` viem (chain X Layer testnet, chainId 195) → ganti stub → e2e ulang di testnet.
+1. Terima `abi/` + `addresses.testnet.json` dari B → implement `ChainClient` viem (chain X Layer testnet, chainId 1952) → ganti stub → e2e ulang di testnet.
 2. Deploy gateway + engine ke host publik HTTPS (Railway/Fly/VPS; engine & gateway satu mesin cukup).
 3. Registrasi ASP di okx.ai via skill `okx-ai` (Agentic Wallet Dien sudah ada). Detail listing → lihat `delivery_implementation_plan.md`.
 
@@ -426,7 +438,7 @@ Langkah:
 
 1. `forge init`; solc 0.8.24; OpenZeppelin (`ERC721`, `Ownable`, `SafeERC20`).
 2. `MockUSDT.sol`: ERC-20, 6 desimal, fungsi `faucet(address to, uint256 amt)` publik (testnet only).
-3. Konfigurasi X Layer testnet: RPC `https://testrpc.xlayer.tech`, chainId **195**, explorer `https://www.okx.com/web3/explorer/xlayer-test`. Gas token OKB testnet dari faucet OKX.
+3. Konfigurasi X Layer testnet: RPC `https://testrpc.xlayer.tech`, chainId **1952**, explorer `https://www.okx.com/web3/explorer/xlayer-test`. Gas token OKB testnet dari faucet OKX.
 
 **Acceptance:** `forge test` template jalan; MockUSDT ter-deploy di testnet + faucet berfungsi.
 
@@ -469,7 +481,7 @@ Bukti publik yang bisa dicek siapa pun **tanpa percaya Cachet** — baca chain l
 Checklist urut (perkiraan setengah hari kerja bersama):
 
 1. B serahkan `abi/` + `addresses.testnet.json` + address MockUSDT (faucet).
-2. A: swap stub → viem `ChainClient`; isi env (`RPC_URL`, `CHAIN_ID=195`, addresses, gateway private key); faucet OKB + MockUSDT ke wallet gateway.
+2. A: swap stub → viem `ChainClient`; isi env (`RPC_URL`, `CHAIN_ID=1952`, addresses, gateway private key); faucet OKB + MockUSDT ke wallet gateway.
 3. B: `setGateway(addressGatewayA)` di Registry/Certificate/Vault.
 4. **Smoke test bersama (urutan Golden Path):**
    - [ ] `verify` gambar baru → ORIGINAL
@@ -510,7 +522,7 @@ Checklist urut (perkiraan setengah hari kerja bersama):
 | Komponen | Teknologi | Env vars kunci |
 |---|---|---|
 | Engine | Python 3.11, FastAPI, imagehash, Pillow, open_clip_torch (CPU), faiss-cpu, sqlite3 | `ENGINE_PORT`, `INDEX_PATH` |
-| Gateway | Node 20, TS, Fastify, viem, @modelcontextprotocol/sdk, OKX Payment SDK (x402) | `GATEWAY_PK`, `RPC_URL=https://testrpc.xlayer.tech`, `CHAIN_ID=195`, `ENGINE_URL`, `X402_*`, `X402_BYPASS` (dev) |
+| Gateway | Node 20, TS, Fastify, viem, @modelcontextprotocol/sdk, OKX Payment SDK (x402) | `GATEWAY_PK`, `RPC_URL=https://testrpc.xlayer.tech`, `CHAIN_ID=1952`, `ENGINE_URL`, `X402_*`, `X402_BYPASS` (dev) |
 | Watch | Node 20, node-cron | `CRON_SCHEDULE`, `WEBHOOK_*` |
 | Kontrak | Solidity 0.8.24, Foundry, OpenZeppelin 5 | `DEPLOYER_PK`, `RESOLVER_ADDR`, `GATEWAY_ADDR` |
 | Cert page | Vite, TS, viem (read-only) | `VITE_RPC_URL`, `VITE_ADDRESSES` |
@@ -562,7 +574,7 @@ File nyata ada di `.env.example` root repo — isi variabelnya:
 
 | Flag | Default MVP | Alternatif | Pemutus |
 |---|---|---|---|
-| Testnet vs mainnet X Layer utk demo final | **Testnet (195)** | Mainnet (196) bila semua hijau H5 & ada OKB | Dien, H5 |
+| Testnet vs mainnet X Layer utk demo final | **Testnet (1952)** | Mainnet (196) bila semua hijau H5 & ada OKB | Dien, H5 |
 | Payment token demo on-chain | MockUSDT (faucet) | USDT asli di mainnet | mengikuti flag di atas |
 | Embedding model | open_clip ViT-B/32 | DINOv2 (lebih berat) | A, bebas selama §3.2 tetap |
 | Hosting gateway | Railway | Fly/VPS | A |

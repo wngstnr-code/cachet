@@ -1,6 +1,6 @@
 # Cachet Contracts (Person B)
 
-Kontrak Solidity untuk Cachet di **X Layer Testnet (chainId 195)**.
+Kontrak Solidity untuk Cachet di **X Layer Testnet (chainId 1952)**.
 Spec mengikat: `docs/technical_implementation_plan.md` §3.1 (interface freeze, sudah
 BEKU sejak RFC-001) dan §5 (workstream B).
 
