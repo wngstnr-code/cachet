@@ -17,6 +17,7 @@ help:
 	@echo "make fmt              — format solidity"
 	@echo "make verify-env       — cek .env root sudah terisi"
 	@echo "make deploy-mockusdt  — deploy MockUSDT ke X Layer Testnet (+verifikasi)"
+	@echo "make deploy           — deploy 4 kontrak inti + wiring (+verifikasi)"
 	@echo "make verify           — verifikasi susulan: ADDR=0x... NAME=src/X.sol:X"
 	@echo "make verify-status    — cek status verifikasi: ADDR=0x..."
 
@@ -54,6 +55,21 @@ deploy-mockusdt: verify-env
 		--broadcast \
 		$(VERIFY_FLAGS) \
 		-vvv
+
+# Deploy keempat kontrak inti + wiring lengkap. Gagal bila ada tautan
+# yang tertinggal (assert di akhir Deploy.s.sol).
+deploy: verify-env verify-deploy-env
+	forge script script/Deploy.s.sol:Deploy \
+		--rpc-url $(RPC_URL) \
+		--broadcast \
+		$(VERIFY_FLAGS) \
+		-vvv
+
+verify-deploy-env:
+	@test -n "$(ADDR_MOCKUSDT)" || (echo "❌ ADDR_MOCKUSDT kosong — deploy MockUSDT dulu"; exit 1)
+	@test -n "$(GATEWAY_ADDR)"  || (echo "❌ GATEWAY_ADDR kosong — minta ke Person A (§3.4)"; exit 1)
+	@test -n "$(RESOLVER_ADDR)" || (echo "❌ RESOLVER_ADDR kosong"; exit 1)
+	@echo "✅ alamat untuk deploy lengkap"
 
 # Verifikasi menyusul untuk kontrak yang sudah terlanjur ter-deploy tanpa --verify.
 # Pemakaian: make verify ADDR=0x... NAME=src/MockUSDT.sol:MockUSDT
