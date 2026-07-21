@@ -1,0 +1,64 @@
+name: contracts
+
+# Hanya jalan saat folder Person B berubah. Perubahan di services/, apps/server,
+# atau docs/ tidak memicu ini — supaya CI Person A nanti berdiri sendiri dan
+# PR dokumen tidak menunggu Foundry.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "contracts/**"
+      - ".github/workflows/contracts.yml"
+  pull_request:
+    paths:
+      - "contracts/**"
+      - ".github/workflows/contracts.yml"
+
+# PR yang di-push berkali-kali: batalkan run lama, jalankan yang terbaru saja.
+concurrency:
+  group: contracts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: build + test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+
+    steps:
+      - name: Checkout (dengan submodule)
+        uses: actions/checkout@v4
+        with:
+          # WAJIB: forge-std & OpenZeppelin adalah submodule. Tanpa ini,
+          # build gagal dengan error "file not found" yang membingungkan.
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Versi toolchain
+        run: forge --version
+
+      # Format dicek duluan: paling cepat gagal, paling murah diperbaiki.
+      - name: Format check
+        run: forge fmt --check
+
+      # --sizes menjaga kontrak tetap di bawah batas EIP-170 (24 KB).
+      # MockUSDT masih 2 KB, tapi 4 kontrak inti B2 akan jauh lebih besar —
+      # lebih baik ketahuan di CI daripada saat deploy gagal.
+      - name: Build
+        run: forge build --sizes
+
+      - name: Test
+        run: forge test -vvv
+
+      # Tidak memblokir merge: coverage bisa rewel dan angkanya mudah
+      # menyesatkan (MockUSDT 100% padahal cuma 8 baris). Ditampilkan sebagai
+      # informasi, bukan gerbang.
+      - name: Coverage (informatif)
+        continue-on-error: true
+        run: forge coverage --no-match-coverage "script|lib" --report summary
