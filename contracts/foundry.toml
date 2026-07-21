@@ -1,0 +1,44 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+test = "test"
+script = "script"
+
+# Dikunci di §1.4 technical plan — jangan naikkan tanpa alasan.
+solc = "0.8.24"
+
+# ⚠️ SENGAJA shanghai, BUKAN cancun.
+# X Layer adalah zkEVM (Polygon CDK). zkEVM biasanya tertinggal beberapa fork
+# dari L1, dan opcode cancun (MCOPY 0x5e, TSTORE/TLOAD) belum tentu didukung.
+# Kalau tidak didukung, kontrak tetap ter-deploy tapi REVERT saat runtime —
+# gejalanya terlihat seperti bug logika, bukan masalah kompilasi. Mahal sekali
+# didiagnosis, apalagi saat rekaman demo.
+#
+# Sudah diverifikasi: untuk MockUSDT, bytecode cancun dan shanghai IDENTIK di
+# luar metadata, jadi tidak ada yang hilang. Kontrak B2 (struct, bytes32[4],
+# string memory) jauh lebih mungkin memicu MCOPY di bawah cancun.
+#
+# Naikkan ke cancun HANYA setelah terbukti di testnet dengan tx nyata.
+evm_version = "shanghai"
+
+optimizer = true
+optimizer_runs = 200
+
+remappings = [
+    "forge-std/=lib/forge-std/src/",
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+]
+
+# ── X Layer (§1.4) ────────────────────────────────────────────────────────────
+# RPC_URL diisi dari .env DI ROOT REPO (satu file env untuk seluruh monorepo).
+# Foundry hanya membaca .env di cwd, jadi jalankan lewat `make` (lihat Makefile)
+# atau `source ../.env` dulu.
+[rpc_endpoints]
+xlayer_testnet = "${RPC_URL}"
+
+[fmt]
+line_length = 110
+tab_width = 4
+bracket_spacing = false
+int_types = "long"
