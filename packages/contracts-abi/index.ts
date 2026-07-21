@@ -439,6 +439,22 @@ export const CachetRegistryAbi = [
   },
   {
     "type": "error",
+    "name": "ParamBelowFloor",
+    "inputs": [
+      {
+        "name": "value",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "min",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
     "name": "ZeroAddress",
     "inputs": []
   }
@@ -486,6 +502,32 @@ export const CachetCertificateAbi = [
   {
     "type": "function",
     "name": "MAX_WAITING_PERIOD",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MIN_COVERAGE_TERM",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MIN_WAITING_PERIOD",
     "inputs": [],
     "outputs": [
       {
@@ -1644,11 +1686,6 @@ export const CachetCertificateAbi = [
   },
   {
     "type": "error",
-    "name": "InvalidParam",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "NotChallengeManager",
     "inputs": [
       {
@@ -1709,6 +1746,22 @@ export const CachetCertificateAbi = [
         "name": "account",
         "type": "address",
         "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "ParamBelowFloor",
+    "inputs": [
+      {
+        "name": "value",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "min",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ]
   },
@@ -1798,6 +1851,32 @@ export const CachetVaultAbi = [
   {
     "type": "function",
     "name": "MAX_PREMIUM_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MIN_FRAUD_BOND",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MIN_PREMIUM_BPS",
     "inputs": [],
     "outputs": [
       {
@@ -2554,6 +2633,22 @@ export const CachetVaultAbi = [
   },
   {
     "type": "error",
+    "name": "ParamBelowFloor",
+    "inputs": [
+      {
+        "name": "value",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "min",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
     "name": "ParamOutOfRange",
     "inputs": [
       {
@@ -2639,6 +2734,32 @@ export const ChallengeManagerAbi = [
   {
     "type": "function",
     "name": "MAX_LIVENESS_WINDOW",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MIN_CHALLENGE_BOND",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MIN_LIVENESS_WINDOW",
     "inputs": [],
     "outputs": [
       {
@@ -3237,6 +3358,22 @@ export const ChallengeManagerAbi = [
         "name": "account",
         "type": "address",
         "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "ParamBelowFloor",
+    "inputs": [
+      {
+        "name": "value",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "min",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ]
   },
