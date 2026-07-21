@@ -368,9 +368,11 @@ contract CachetCertificateTest is Test {
         (, uint256 certId) = _mint(creator);
         ICachetCertificate.CertData memory before = cert.certData(certId);
 
+        uint64 wpFloor = cert.MIN_WAITING_PERIOD();
+        uint64 ctFloor = cert.MIN_COVERAGE_TERM();
         vm.startPrank(owner);
-        cert.setWaitingPeriod(1 seconds);
-        cert.setCoverageTerm(1 days);
+        cert.setWaitingPeriod(wpFloor);
+        cert.setCoverageTerm(ctFloor);
         vm.stopPrank();
 
         ICachetCertificate.CertData memory after_ = cert.certData(certId);
@@ -384,10 +386,20 @@ contract CachetCertificateTest is Test {
         cert.setMaxDeclaredValue(1);
     }
 
-    function test_RevertWhen_CoverageTermNol() public {
-        vm.expectRevert(CachetCertificate.InvalidParam.selector);
+    function test_RevertWhen_CoverageTermDiBawahLantai() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(CachetGoverned.ParamBelowFloor.selector, 0, cert.MIN_COVERAGE_TERM())
+        );
         vm.prank(owner);
         cert.setCoverageTerm(0);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CachetGoverned.ParamBelowFloor.selector, uint64(1 hours), cert.MIN_COVERAGE_TERM()
+            )
+        );
+        vm.prank(owner);
+        cert.setCoverageTerm(1 hours);
     }
 
     // ── Pagar parameter (temuan audit B2a) ───────────────────────────────────
@@ -432,12 +444,31 @@ contract CachetCertificateTest is Test {
         assertTrue(cert.isCoverageActive(certId));
     }
 
-    function test_WaitingPeriodNolDiizinkan_CoverageAktifSeketika() public {
+    /// @dev LANTAI, bukan sekadar pagar atas. `waitingPeriod = 0` berarti
+    ///      coverage aktif seketika -- mekanismenya mati, bukan dipercepat.
+    ///      Owner tidak boleh bisa mematikannya lewat setelan.
+    function test_RevertWhen_WaitingPeriodDiBawahLantai() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(CachetGoverned.ParamBelowFloor.selector, 0, cert.MIN_WAITING_PERIOD())
+        );
         vm.prank(owner);
         cert.setWaitingPeriod(0);
+    }
+
+    function test_WaitingPeriodTepatDiLantai_Diizinkan() public {
+        // Nilai lantai = setelan demo. Harus tetap bisa dipakai.
+        // Konstanta dibaca DULU: vm.prank hanya berlaku untuk satu panggilan,
+        // dan pembacaan konstanta akan memakannya.
+        uint64 floor_ = cert.MIN_WAITING_PERIOD();
+
+        vm.prank(owner);
+        cert.setWaitingPeriod(floor_);
 
         (, uint256 certId) = _mint(creator);
-        assertTrue(cert.isCoverageActive(certId), "waitingPeriod 0 = coverage langsung aktif");
+        assertFalse(cert.isCoverageActive(certId), "masa tunggu tetap berlaku, hanya singkat");
+
+        vm.warp(block.timestamp + floor_);
+        assertTrue(cert.isCoverageActive(certId));
     }
 
     // ═════════════════════════════════════════════════════════════════════════

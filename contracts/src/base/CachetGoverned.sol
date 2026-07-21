@@ -44,6 +44,18 @@ abstract contract CachetGoverned is Ownable {
     /// @notice Alamat wiring sudah pernah ditetapkan dan terkunci selamanya.
     error AlreadyWired(string what);
 
+    /// @notice Parameter di bawah lantai yang diizinkan.
+    /// @dev Lantai ada untuk mencegah sebuah mekanisme DIMATIKAN, bukan untuk
+    ///      menjamin nilainya memadai. `livenessWindow = 0` menghapus satu-
+    ///      satunya rem publik terhadap resolver; `premiumBps = 0` membuat
+    ///      jaminan gratis; `fraudBondAmount = 0` menghapus taruhan kreator
+    ///      sekaligus bounty penantang. Ketiganya "sekadar mengubah parameter"
+    ///      tapi efeknya membatalkan bagian inti sistem.
+    ///
+    ///      Kecukupan nilai untuk produksi (48 jam, 2%, 5 USDT) tetap keputusan
+    ///      kebijakan — kontrak hanya menjamin mekanismenya hidup.
+    error ParamBelowFloor(uint256 value, uint256 min);
+
     constructor(address owner_) Ownable(owner_) {}
 
     /// @notice Wiring SEKALI SEUMUR HIDUP kontrak.

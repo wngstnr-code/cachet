@@ -56,6 +56,12 @@ contract CachetCertificate is ICachetCertificate, ERC721URIStorage, CachetGovern
     uint64 public constant MAX_WAITING_PERIOD = 30 days;
     uint64 public constant MAX_COVERAGE_TERM = 3650 days; // 10 tahun
 
+    /// @notice Lantai = nilai tercepat yang pernah kami niatkan dipakai, yaitu
+    ///         setelan demo. Mencegah masa tunggu dimatikan sepenuhnya.
+    uint64 public constant MIN_WAITING_PERIOD = 10 seconds;
+    /// @notice Coverage berumur sangat pendek = sertifikat tanpa makna.
+    uint64 public constant MIN_COVERAGE_TERM = 1 days;
+
     /// @notice Plafon tertinggi yang boleh disetel untuk `maxDeclaredValue`.
     /// @dev Tanpa pagar ini, owner bisa menaikkan plafon sampai tak terhingga
     ///      lalu menerbitkan satu sertifikat yang jaminannya sebesar seluruh
@@ -73,7 +79,6 @@ contract CachetCertificate is ICachetCertificate, ERC721URIStorage, CachetGovern
     error DeclaredValueTooHigh(uint256 declaredValue, uint256 max);
     error InvalidCertId(uint256 certId);
     error AlreadyRevoked(uint256 certId);
-    error InvalidParam();
     error ParamOutOfRange(uint64 value, uint64 max);
     error ValueOutOfRange(uint256 value, uint256 max);
     error UnknownEntryId(uint256 entryId, uint256 entryCount);
@@ -136,18 +141,25 @@ contract CachetCertificate is ICachetCertificate, ERC721URIStorage, CachetGovern
     /// @param v 0 diperbolehkan (coverage aktif seketika); batas atas menjaga
     ///          owner tidak bisa menunda coverage sampai tak berarti.
     function setWaitingPeriod(uint64 v) external onlyOwner {
+        if (v < MIN_WAITING_PERIOD) revert ParamBelowFloor(v, MIN_WAITING_PERIOD);
         if (v > MAX_WAITING_PERIOD) revert ParamOutOfRange(v, MAX_WAITING_PERIOD);
         emit ParamChanged("waitingPeriod", waitingPeriod, v);
         waitingPeriod = v;
     }
 
     function setCoverageTerm(uint64 v) external onlyOwner {
-        if (v == 0) revert InvalidParam(); // coverage 0 detik = sertifikat tanpa makna
+        if (v < MIN_COVERAGE_TERM) revert ParamBelowFloor(v, MIN_COVERAGE_TERM);
         if (v > MAX_COVERAGE_TERM) revert ParamOutOfRange(v, MAX_COVERAGE_TERM);
         emit ParamChanged("coverageTerm", coverageTerm, v);
         coverageTerm = v;
     }
 
+    /// @notice SENGAJA tanpa lantai. `maxDeclaredValue = 0` menghentikan
+    ///         penerbitan sertifikat berjaminan baru tanpa menyentuh sertifikat
+    ///         yang sudah terbit maupun jalur pembayaran klaim.
+    /// @dev Ini yang paling mendekati "emergency stop" tanpa memberi owner
+    ///      kuasa membekukan payout — kuasa yang justru sengaja tidak kami
+    ///      berikan (§5.0, tidak ada Pausable).
     function setMaxDeclaredValue(uint256 v) external onlyOwner {
         if (v > MAX_DECLARED_VALUE_CEILING) revert ValueOutOfRange(v, MAX_DECLARED_VALUE_CEILING);
         emit ParamChanged("maxDeclaredValue", maxDeclaredValue, v);

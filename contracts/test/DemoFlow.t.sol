@@ -186,7 +186,7 @@ contract DemoFlowTest is Test {
         cm2.setResolver(resolver);
         cm2.setCertificate(address(cert2));
         cm2.setVault(address(vault2));
-        cert2.setWaitingPeriod(0);
+        cert2.setWaitingPeriod(DEMO_WAITING_PERIOD);
         cm2.setLivenessWindow(DEMO_LIVENESS_WINDOW);
         vm.stopPrank();
 
