@@ -42,6 +42,20 @@ contract CachetCertificate is ICachetCertificate, ERC721URIStorage, CachetGovern
     /// @notice Plafon nilai yang dijamin. Jujur: coverage terbatas selama bootstrap.
     uint256 public maxDeclaredValue = 100e6; // 100 USDT (6 desimal)
 
+    // ── Pagar parameter: konstanta SUNGGUHAN, tidak bisa diubah siapa pun ────
+    //
+    // Tanpa batas ini, owner bisa menyetel `waitingPeriod` sangat besar dan
+    // membuat coverage tidak pernah aktif — secara teknis "hanya mengubah
+    // parameter", tapi efeknya membatalkan jaminan. Nilai ekstrem juga membuat
+    // `mintedAt + waitingPeriod` overflow uint64 sehingga SELURUH penerbitan
+    // sertifikat revert (terbukti saat audit B2a).
+    //
+    // Inilah yang membuat janji §5.0 "parameter boleh berubah, aturan main
+    // tidak" benar-benar ditegakkan kontrak, bukan sekadar niat baik owner.
+
+    uint64 public constant MAX_WAITING_PERIOD = 30 days;
+    uint64 public constant MAX_COVERAGE_TERM = 3650 days; // 10 tahun
+
     mapping(uint256 => CertData) private _certData;
     uint256 private _certCount;
 
@@ -52,6 +66,8 @@ contract CachetCertificate is ICachetCertificate, ERC721URIStorage, CachetGovern
     error InvalidCertId(uint256 certId);
     error AlreadyRevoked(uint256 certId);
     error InvalidParam();
+    error ParamOutOfRange(uint64 value, uint64 max);
+    error UnknownEntryId(uint256 entryId, uint256 entryCount);
 
     event GatewaySet(address indexed previous, address indexed current);
     event ChallengeManagerSet(address indexed previous, address indexed current);
@@ -100,13 +116,17 @@ contract CachetCertificate is ICachetCertificate, ERC721URIStorage, CachetGovern
 
     // ── Parameter (§5.0) ─────────────────────────────────────────────────────
 
+    /// @param v 0 diperbolehkan (coverage aktif seketika); batas atas menjaga
+    ///          owner tidak bisa menunda coverage sampai tak berarti.
     function setWaitingPeriod(uint64 v) external onlyOwner {
+        if (v > MAX_WAITING_PERIOD) revert ParamOutOfRange(v, MAX_WAITING_PERIOD);
         emit ParamChanged("waitingPeriod", waitingPeriod, v);
         waitingPeriod = v;
     }
 
     function setCoverageTerm(uint64 v) external onlyOwner {
         if (v == 0) revert InvalidParam(); // coverage 0 detik = sertifikat tanpa makna
+        if (v > MAX_COVERAGE_TERM) revert ParamOutOfRange(v, MAX_COVERAGE_TERM);
         emit ParamChanged("coverageTerm", coverageTerm, v);
         coverageTerm = v;
     }
@@ -135,7 +155,7 @@ contract CachetCertificate is ICachetCertificate, ERC721URIStorage, CachetGovern
         }
 
         entryId = registry.register(r.phashes, r.embCommit, r.to, r.revealedCommit, r.assetURI);
-        certId = _mint(r.to, entryId, r.declaredValue, r.insurable, r.tokenURI_);
+        certId = _issueCertificate(r.to, entryId, r.declaredValue, r.insurable, r.tokenURI_);
 
         // payer = wallet gateway. Gateway cukup approve ke Vault SEKALI di awal
         // dengan allowance besar, lalu memanggil ini berkali-kali (RFC-001 P1).
@@ -155,10 +175,23 @@ contract CachetCertificate is ICachetCertificate, ERC721URIStorage, CachetGovern
         if (declaredValue > maxDeclaredValue) {
             revert DeclaredValueTooHigh(declaredValue, maxDeclaredValue);
         }
-        certId = _mint(to, entryId, declaredValue, insurable, tokenURI_);
+
+        // Tanpa cek ini, gateway yang keliru bisa menerbitkan sertifikat yang
+        // menunjuk entri tidak ada — cert page akan gagal membacanya dan
+        // "bukti publik" jadi tautan mati. Dilewati bila registry belum
+        // di-wiring (skenario unit test murni).
+        if (address(registry) != address(0)) {
+            uint256 count = registry.entryCount();
+            if (entryId == 0 || entryId > count) revert UnknownEntryId(entryId, count);
+        }
+
+        certId = _issueCertificate(to, entryId, declaredValue, insurable, tokenURI_);
     }
 
-    function _mint(
+    /// @dev SENGAJA tidak dinamai `_mint`: ERC721 sudah punya `_mint(address,uint256)`.
+    ///      Dua fungsi bernama sama dengan makna berbeda di kontrak yang
+    ///      memegang uang adalah jebakan bagi reviewer -- ditemukan saat audit B2a.
+    function _issueCertificate(
         address to,
         uint256 entryId,
         uint256 declaredValue,

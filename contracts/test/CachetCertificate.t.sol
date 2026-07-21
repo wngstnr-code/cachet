@@ -353,6 +353,56 @@ contract CachetCertificateTest is Test {
         cert.setCoverageTerm(0);
     }
 
+    // ── Pagar parameter (temuan audit B2a) ───────────────────────────────────
+    //
+    // Sebelum pagar ini ada, owner bisa menyetel waitingPeriod = type(uint64).max
+    // sehingga `mintedAt + waitingPeriod` overflow dan SELURUH penerbitan
+    // sertifikat revert. Secara teknis "cuma mengubah parameter", efeknya
+    // membekukan produk. Inilah yang membuat janji §5.0 ditegakkan kontrak.
+
+    function test_RevertWhen_WaitingPeriodMelebihiPagar() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CachetCertificate.ParamOutOfRange.selector, uint64(31 days), cert.MAX_WAITING_PERIOD()
+            )
+        );
+        vm.prank(owner);
+        cert.setWaitingPeriod(31 days);
+    }
+
+    function test_RevertWhen_CoverageTermMelebihiPagar() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CachetCertificate.ParamOutOfRange.selector, uint64(3651 days), cert.MAX_COVERAGE_TERM()
+            )
+        );
+        vm.prank(owner);
+        cert.setCoverageTerm(3651 days);
+    }
+
+    function test_PagarMencegahOverflowPenerbitan() public {
+        // Nilai maksimum yang diizinkan harus tetap menghasilkan mint yang sehat.
+        vm.startPrank(owner);
+        cert.setWaitingPeriod(cert.MAX_WAITING_PERIOD());
+        cert.setCoverageTerm(cert.MAX_COVERAGE_TERM());
+        vm.stopPrank();
+
+        (, uint256 certId) = _mint(creator);
+        ICachetCertificate.CertData memory d = cert.certData(certId);
+
+        assertGt(d.coverageEnd, d.coverageStart, "tidak boleh overflow di batas atas");
+        vm.warp(d.coverageStart);
+        assertTrue(cert.isCoverageActive(certId));
+    }
+
+    function test_WaitingPeriodNolDiizinkan_CoverageAktifSeketika() public {
+        vm.prank(owner);
+        cert.setWaitingPeriod(0);
+
+        (, uint256 certId) = _mint(creator);
+        assertTrue(cert.isCoverageActive(certId), "waitingPeriod 0 = coverage langsung aktif");
+    }
+
     // ═════════════════════════════════════════════════════════════════════════
     // COMMIT-REVEAL lewat jalur mint
     // ═════════════════════════════════════════════════════════════════════════
@@ -402,13 +452,30 @@ contract CachetCertificateTest is Test {
     // ═════════════════════════════════════════════════════════════════════════
 
     function test_MintCertificateTerpisah_TidakMenyentuhRegistryMaupunVault() public {
-        vm.prank(gateway);
-        uint256 certId = cert.mintCertificate(creator, 42, DECLARED, true, "ipfs://meta");
+        // Butuh entri nyata dulu — sejak audit B2a, entryId hantu ditolak.
+        (uint256 entryId,) = _mint(creator);
+        uint256 vaultCallsBefore = vault.callCount();
 
-        assertEq(cert.ownerOf(certId), creator);
-        assertEq(cert.certData(certId).entryId, 42, "entryId dipakai apa adanya, tanpa validasi registry");
-        assertEq(reg.entryCount(), 0, "jalur ini sengaja tidak me-register");
-        assertEq(vault.callCount(), 0, "jalur ini sengaja tidak menarik dana");
+        vm.prank(gateway);
+        uint256 certId = cert.mintCertificate(buyer, entryId, DECLARED, true, "ipfs://meta2");
+
+        assertEq(cert.ownerOf(certId), buyer);
+        assertEq(cert.certData(certId).entryId, entryId);
+        assertEq(reg.entryCount(), 1, "jalur ini sengaja TIDAK me-register entri baru");
+        assertEq(vault.callCount(), vaultCallsBefore, "jalur ini sengaja tidak menarik dana");
+    }
+
+    /// @dev Temuan audit B2a. Tanpa cek ini, gateway yang keliru bisa
+    ///      menerbitkan sertifikat yang menunjuk entri tidak ada — cert page
+    ///      akan gagal membacanya dan "bukti publik" jadi tautan mati.
+    function test_RevertWhen_MintCertificateEntryIdHantu() public {
+        vm.expectRevert(abi.encodeWithSelector(CachetCertificate.UnknownEntryId.selector, 999, 0));
+        vm.prank(gateway);
+        cert.mintCertificate(creator, 999, DECLARED, true, "ipfs://meta");
+
+        vm.expectRevert(abi.encodeWithSelector(CachetCertificate.UnknownEntryId.selector, 0, 0));
+        vm.prank(gateway);
+        cert.mintCertificate(creator, 0, DECLARED, true, "ipfs://meta");
     }
 
     function test_RevertWhen_MintCertificateMelampauiPlafon() public {

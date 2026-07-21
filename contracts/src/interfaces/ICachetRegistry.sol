@@ -21,6 +21,14 @@ interface ICachetRegistry {
     ///      reveal. Trade-off ini disadari: on-chain kita hanya bisa
     ///      membuktikan "hash X ada sejak timestamp T", bukan "hash X memang
     ///      berasal dari karya Y". Itu sudah cukup untuk anti-sniping.
+    ///
+    /// @dev DIKETAHUI (audit B2a): `commit` bisa di-front-run. Penyerang yang
+    ///      melihat tx di mempool bisa menyalin hash-nya dan mengirim lebih
+    ///      dulu, membuat tx kreator revert dengan `CommitAlreadyExists`.
+    ///      Dampaknya terbatas pada gas yang terbuang: hash tetap tercatat pada
+    ///      timestamp yang praktis sama, dan hanya kreator yang tahu `salt`
+    ///      sehingga hanya dia yang bisa reveal. Tidak dimitigasi di MVP karena
+    ///      biayanya (commit dua fase) tidak sepadan dengan kerugiannya.
     function commit(bytes32 commitHash) external;
 
     /// @return timestamp komitmen, 0 bila tidak ada

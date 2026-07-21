@@ -9,7 +9,22 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 ///
 ///         Batasnya tegas: **parameter boleh berubah, aturan main tidak.**
 ///         Payout selalu ke `ownerOf(certId)`, apa pun setelan yang berlaku
-///         (invariant §9.1). Owner tidak bisa mengubah logika, hanya angka.
+///         (invariant §9.1). Owner tidak bisa mengubah logika, hanya angka —
+///         dan angka pun dibatasi konstanta yang tidak bisa diubah siapa pun
+///         (mis. `MAX_WAITING_PERIOD`).
+///
+///         KEKUASAAN OWNER YANG TETAP ADA, dan WAJIB diungkap di README serta
+///         disclosure listing (audit B2a):
+///         1. Owner bisa mengganti alamat gateway, lalu menerbitkan sertifikat
+///            sendiri. Sertifikat tetap tunduk pada aturan yang sama —
+///            bond & premi tetap ditarik, payout tetap ke pemegang — tapi
+///            owner bisa menerbitkan tanpa lewat pemeriksaan originality.
+///         2. Owner bisa mengganti alamat ChallengeManager, dan dengan begitu
+///            mengendalikan siapa yang boleh mencabut sertifikat.
+///
+///         Ini konsekuensi tak terhindarkan dari MVP tanpa timelock/multisig.
+///         Jangan mengklaim "trustless" — klaim yang benar adalah "aturan
+///         mainnya on-chain dan bisa diaudit, operatornya masih terpusat".
 ///
 /// @dev Setiap perubahan parameter WAJIB emit `ParamChanged` supaya kebijakan
 ///      tetap terlacak publik di explorer — tanpa ini, "configurable" jadi
