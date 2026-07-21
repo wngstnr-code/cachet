@@ -83,15 +83,52 @@ contract CachetCertificateTest is Test {
         assertEq(cert.ownerOf(certId), creator);
         assertTrue(cert.isCoverageActive(certId));
 
+        // Rekam SEBELUM transfer — tanpa ini perbandingan sesudahnya jadi
+        // tautologi (membandingkan nilai dengan dirinya sendiri) dan tidak
+        // akan pernah gagal apa pun yang terjadi pada kontrak.
+        ICachetCertificate.CertData memory before = cert.certData(certId);
+
         vm.prank(creator);
         cert.transferFrom(creator, buyer, certId);
 
         assertEq(cert.ownerOf(certId), buyer, "NFT harus pindah");
         assertTrue(cert.isCoverageActive(certId), "coverage HARUS tetap aktif setelah transfer");
 
-        ICachetCertificate.CertData memory d = cert.certData(certId);
-        assertEq(d.declaredValue, DECLARED, "nilai jaminan tidak boleh berubah karena transfer");
-        assertEq(d.coverageEnd, cert.certData(certId).coverageEnd, "jendela coverage tidak reset");
+        ICachetCertificate.CertData memory afterTransfer = cert.certData(certId);
+        assertEq(afterTransfer.declaredValue, before.declaredValue, "nilai jaminan tidak boleh berubah");
+        assertEq(afterTransfer.declaredValue, DECLARED);
+        assertEq(afterTransfer.coverageStart, before.coverageStart, "jendela coverage tidak boleh reset");
+        assertEq(afterTransfer.coverageEnd, before.coverageEnd, "jendela coverage tidak boleh reset");
+        assertEq(afterTransfer.mintedAt, before.mintedAt, "mintedAt = umur sertifikat, tidak boleh reset");
+        assertEq(afterTransfer.entryId, before.entryId, "tautan ke registry tidak boleh putus");
+        assertEq(
+            afterTransfer.challengesSurvived,
+            before.challengesSurvived,
+            "rekam jejak challenge ikut aset, bukan pemilik"
+        );
+    }
+
+    /// @dev Temuan audit B2a — BATASAN yang harus diketahui Person A.
+    ///      `_safeMint` menolak penerima berupa kontrak yang tidak
+    ///      mengimplementasi `onERC721Received`. Ini disengaja (mencegah
+    ///      sertifikat terkunci selamanya di kontrak yang tak bisa
+    ///      mentransfernya), TAPI berarti gateway tidak bisa me-mint ke
+    ///      smart contract wallet yang tidak patuh ERC-721.
+    ///      Verifikasi alamat penerima sebelum demo.
+    function test_MintKeKontrakTanpaERC721Receiver_Revert() public {
+        address plain = address(new NonReceiver());
+
+        vm.expectRevert(); // ERC721InvalidReceiver
+        vm.prank(gateway);
+        cert.registerAndMint(_req(plain, DECLARED, true));
+    }
+
+    function test_MintKeKontrakDenganERC721Receiver_Berhasil() public {
+        address ok = address(new GoodReceiver());
+
+        vm.prank(gateway);
+        (, uint256 certId) = cert.registerAndMint(_req(ok, DECLARED, true));
+        assertEq(cert.ownerOf(certId), ok);
     }
 
     function test_TokenTidakSoulbound_TransferTidakDibatasi() public {
@@ -610,5 +647,15 @@ contract CachetCertificateTest is Test {
 
         assertEq(cert.ownerOf(certId), to);
         assertTrue(cert.isCoverageActive(certId), "coverage harus bertahan ke pemegang mana pun");
+    }
+}
+
+/// @notice Kontrak tanpa `onERC721Received` — penerima yang TIDAK sah.
+contract NonReceiver {}
+
+/// @notice Kontrak yang patuh ERC-721 — penerima yang sah.
+contract GoodReceiver {
+    function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4) {
+        return this.onERC721Received.selector;
     }
 }
