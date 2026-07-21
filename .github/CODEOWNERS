@@ -1,0 +1,43 @@
+# CACHET — kepemilikan folder (docs/technical_implementation_plan.md §11.1)
+#
+# GitHub otomatis meminta review dari pemilik folder yang tersentuh sebuah PR.
+# Selama PR hanya menyentuh folder sendiri → approval cepat.
+# Begitu PR menyentuh folder lawan atau zona bersama → review pihak lain WAJIB.
+#
+# @scientivan   = Dien    (Person A — off-chain: engine, gateway, watch)
+# @wngstnr-code = Wangsit (Person B — on-chain: contracts, cert page)
+#
+# Prasyarat: aktifkan branch protection di main (require PR + 1 approval +
+# require review from Code Owners + block force-push). Tanpa itu file ini
+# hanya jadi saran, bukan pagar.
+#
+# Syarat lain: kedua akun harus punya akses write ke repo ini. CODEOWNERS
+# mengabaikan (tanpa error) username yang tidak punya akses — jadi kalau
+# request review tidak muncul, cek dulu collaborator access, bukan file ini.
+
+# Default: zona bersama — butuh review keduanya
+*                               @scientivan @wngstnr-code
+
+# --- PERSON A — Dien ("Off-chain Brain") ------------------------------------
+/services/engine/               @scientivan
+/services/watch/                @scientivan
+/apps/server/                   @scientivan
+/apps/mcp-server/               @scientivan
+/scripts/                       @scientivan
+
+# --- PERSON B — Wangsit ("On-chain & Proof Page") ---------------------------
+/contracts/                     @wngstnr-code
+/apps/web/                      @wngstnr-code
+
+# --- Zona bersama (eksplisit, biar tidak tertutup aturan di atas) -----------
+# ABI + addresses: B yang menulis, A hanya membaca — tapi A ikut review karena
+# ini titik temu #2 dan bentuk file-nya mengikat kode A.
+/packages/contracts-abi/        @wngstnr-code @scientivan
+
+# §3 Interface Freeze hidup di sini: perubahan wajib sepakat dua pihak (§11.4)
+/docs/                          @scientivan @wngstnr-code
+
+# Konfigurasi root
+/.env.example                   @scientivan @wngstnr-code
+/claude.md                      @scientivan @wngstnr-code
+/.github/                       @scientivan @wngstnr-code

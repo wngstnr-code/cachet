@@ -1,7 +1,7 @@
 # CACHET — Delivery Implementation Plan v1
 
 > **Basis:** `cachet_idea_v2.md` (Ideation v2.1 FINAL) + `technical_implementation_plan.md` (folder yang sama).
-> **Untuk siapa:** Person A (Dien) & Person B (teman) + AI agent masing-masing. Dokumen ini mengatur **semua yang bukan kode**: pendaftaran ASP, go-live, video demo, README, posting X, Google Form — sampai submission selesai.
+> **Untuk siapa:** Person A (Dien) & Person B (Wangsit) + AI agent masing-masing. Dokumen ini mengatur **semua yang bukan kode**: pendaftaran ASP, go-live, video demo, README, posting X, Google Form — sampai submission selesai.
 >
 > **Prinsip #1: buffer review.** Listing ASP harus **lolos review internal OKX (≤24 jam) dan LIVE** untuk eligible. Risiko terbesar bukan kode, tapi antrean review. Maka: **submit listing paling lambat 25 Jul pagi WIB** — bukan mendekati deadline.
 >

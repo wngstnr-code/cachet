@@ -1,7 +1,7 @@
 # CACHET — Technical Implementation Plan v1
 
 > **Basis:** `cachet_idea_v2.md` (Ideation Brief v2.1 FINAL).
-> **Untuk siapa:** dua orang builder (**Person A = Dien**, **Person B = teman**) beserta AI agent masing-masing (Claude / Codex / Gemini). Dokumen ini ditulis agar sebuah AI agent bisa mengeksekusi task-nya **tanpa konteks lain** — semua spec, interface, dan acceptance criteria ada di sini.
+> **Untuk siapa:** dua orang builder (**Person A = Dien**, **Person B = Wangsit**) beserta AI agent masing-masing (Claude / Codex / Gemini). Dokumen ini ditulis agar sebuah AI agent bisa mengeksekusi task-nya **tanpa konteks lain** — semua spec, interface, dan acceptance criteria ada di sini.
 >
 > **Aturan emas kolaborasi:** Workstream A dan B **sepenuhnya independen** setelah §3 (Interface Freeze) disepakati. A tidak menunggu B, B tidak menunggu A, sampai hari Integrasi. **Person B TIDAK punya dan TIDAK butuh akses ke repo Veritas milik Dien** — semua yang B butuhkan ada inline di dokumen ini.
 
@@ -11,8 +11,8 @@
 
 > Pelajaran dari repo referensi (Veritas/Luber): file `env-*.txt` berisi secret asli pernah ter-stage di git index. **Jangan terulang di Cachet.**
 
-1. **`.gitignore` wajib** di tiap repo (`cachet/`, `cachet-contracts/`, `cachet-cert-page/`) sejak commit pertama: pola `.env`, `.env.*`, `env-*.txt`, `*.local`, dengan pengecualian `!.env.example`. (Repo monorepo ini sudah punya `.gitignore` yang benar — pertahankan.)
-2. **Sediakan `.env.example` tanpa nilai asli** di tiap repo (template lengkap di §8) — satu-satunya file env yang boleh di-commit.
+1. **`.gitignore` di root monorepo** (satu file untuk semua) sejak commit pertama: pola `.env`, `.env.*`, `env-*.txt`, `*.local`, dengan pengecualian `!.env.example`. (Sudah ada dan benar — pertahankan.)
+2. **Satu `.env.example` di root tanpa nilai asli** (§8.1) — satu-satunya file env yang boleh di-commit. `.env` nyata tidak pernah di-commit.
 3. **Rotasi key** apa pun yang pernah telanjur ter-commit di repo lama/referensi (API key, kredensial Supabase, private key) — anggap sudah bocor.
 4. **Wallet baru khusus testnet** untuk gateway, resolver, dan deployer — **tiga key terpisah** (selaras invariant §9.6), bukan reuse key lama, bukan wallet berisi dana mainnet.
 5. Sebelum push pertama: `git status --ignored` → pastikan tidak ada file env/secret di daftar staged.
@@ -297,7 +297,7 @@ Semua endpoint idempotent bila diberi `request_id` sama. Error format: `{ "error
 
 > Boleh mereferensikan repo Veritas milik Dien (`Veritas-1` untuk pHash, `Veritas-UHI9/oracle` untuk pola EIP-712). Semua reuse berhenti di sini — output A tidak mensyaratkan B paham asal-usulnya.
 
-**Repo baru:** `cachet/` — monorepo folder `engine/` (Python), `gateway/` (TS), `watch/` (TS), `scripts/`.
+**Folder milik A** (di monorepo yang sama, §11.1): `services/engine/` (Python), `apps/server/` (gateway TS), `apps/mcp-server/` (MCP tools TS), `services/watch/` (TS), `scripts/`.
 
 ### A1 — Originality Engine (Python FastAPI) — Hari 1–2
 
@@ -351,11 +351,11 @@ Langkah:
 
 ---
 
-## 5. WORKSTREAM B — On-chain + Certificate Page (Person: **teman** + AI-nya)
+## 5. WORKSTREAM B — On-chain + Certificate Page (Person: **Wangsit** + AI-nya)
 
 > **Self-contained.** Semua yang dibutuhkan ada di dokumen ini (terutama §3.1). Tidak perlu tahu apa pun tentang Veritas/pHash internals — dari sudut pandang kontrak, `phashes` hanyalah `bytes32[4]` yang disimpan.
 
-**Repo baru:** `cachet-contracts/` (Foundry) + `cachet-cert-page/` (site statis).
+**Folder milik B** (di monorepo yang sama, §11.1): `contracts/` (Foundry — termasuk `contracts/script/` untuk deploy & `DemoFlow`) + `apps/web/` (cert page, site statis). B juga yang mengisi `packages/contracts-abi/` (titik temu #2, diserahkan ke A H3 malam).
 
 ### B1 — Setup Foundry + MockUSDT — Hari 1
 
@@ -426,7 +426,7 @@ Checklist urut (perkiraan setengah hari kerja bersama):
 
 > Tiap hari ada **Gate** (go/no-go). Gate gagal > ½ hari → langsung jalankan aturan potong-scope di bawah (keputusan potong = Dien), **jangan geser hari submit**.
 
-| Hari | Person A (Dien) | Person B (teman) | **Gate (go/no-go)** |
+| Hari | Person A (Dien) | Person B (Wangsit) | **Gate (go/no-go)** |
 |---|---|---|---|
 | **H1 (21/7)** | Sepakati §3 · scaffold engine (A1) · kirim address signer ke B | Sepakati §3 · Foundry setup + MockUSDT (B1) · mulai kontrak (B2) | §3 beku · repo hidup + `.gitignore`/§0 beres · signer address di tangan B · faucet OKB semua wallet |
 | **H2 (22/7)** | Selesaikan A1 + pre-seed & fixture (A2) · mulai gateway (A3) | Lanjut B2 (4 kontrak + test) | A: `pytest` A1 hijau + fixture *the catch* tertangkap · B: 4 kontrak ter-compile, test happy-path jalan |
@@ -451,44 +451,33 @@ Checklist urut (perkiraan setengah hari kerja bersama):
 | Cert page | Vite, TS, viem (read-only) | `VITE_RPC_URL`, `VITE_ADDRESSES` |
 | Hosting | Railway/Fly (A) · Vercel/Netlify (B) | |
 
-### 8.1 `.env.example` — Workstream A (`cachet/`, commit tanpa nilai)
+### 8.1 `.env` — SATU file di root repo (keputusan: monorepo = satu env)
 
-```bash
-# Chain (X Layer Testnet — tabel §1.4)
-RPC_URL=https://testrpc.xlayer.tech
-CHAIN_ID=195
-GATEWAY_PK=                       # wallet gateway BARU, testnet-only (§0)
-# Alamat kontrak (isi dari addresses.testnet.json kiriman B, H3 malam)
-ADDR_REGISTRY= ADDR_CERTIFICATE= ADDR_VAULT= ADDR_CHALLENGE= ADDR_MOCKUSDT=
-# Services
-ENGINE_PORT=8100
-ENGINE_URL=http://localhost:8100
-INDEX_PATH=./data/index
-GATEWAY_PORT=8787
-CERT_PAGE_BASE=                   # URL pattern dari B, H4 (https://…/cert/:id)
-# x402 (OKX Payment SDK)
-X402_BYPASS=0                     # 1 = dev lokal saja; WAJIB 0 saat listing
-# Watch
-CRON_SCHEDULE=0 */6 * * *
-WEBHOOK_URL=
-# Demo
-DEMO_MODE=0                       # 1 = balas dari fixture (jaring pengaman, §13)
-```
+**Satu `.env` di root**, dipakai bersama A dan B. Yang di-commit hanya **`.env.example`** (tanpa nilai asli); `.env` sendiri di-ignore (§0).
 
-### 8.2 `.env.example` — Workstream B (`cachet-contracts/` & `cachet-cert-page/`, commit tanpa nilai)
+File nyata ada di `.env.example` root repo — isi variabelnya:
 
-```bash
-# cachet-contracts (Foundry)
-RPC_URL=https://testrpc.xlayer.tech
-CHAIN_ID=195
-DEPLOYER_PK=                      # wallet deployer BARU, testnet-only (§0)
-RESOLVER_ADDR=                    # wallet resolver — TERPISAH dari deployer & gateway (§9.6)
-GATEWAY_ADDR=                     # address signer gateway dari A (H1)
+| Grup | Var | Pemakai |
+|---|---|---|
+| Chain | `RPC_URL` `CHAIN_ID` | A + B |
+| Kontrak (isi H3 dari B) | `ADDR_REGISTRY` `ADDR_CERTIFICATE` `ADDR_VAULT` `ADDR_CHALLENGE` `ADDR_MOCKUSDT` | A + B |
+| Wallet (3 key TERPISAH, §9.6) | `GATEWAY_PK` `DEPLOYER_PK` `RESOLVER_ADDR` `GATEWAY_ADDR` | A: gateway · B: deployer/resolver |
+| Service | `ENGINE_PORT` `ENGINE_URL` `INDEX_PATH` `GATEWAY_PORT` `CERT_PAGE_BASE` | A |
+| x402 | `X402_BYPASS` | A |
+| Watch | `CRON_SCHEDULE` `WEBHOOK_URL` | A |
+| Cert page | `VITE_RPC_URL` `VITE_ADDRESSES` | B |
+| Demo | `DEMO_MODE` | A |
 
-# cachet-cert-page (Vite)
-VITE_RPC_URL=https://testrpc.xlayer.tech
-VITE_ADDRESSES=                   # path/isi addresses.testnet.json
-```
+**Cara tiap stack membaca `.env` root** (penting — default masing-masing tool TIDAK menunjuk ke root):
+
+| Stack | Cara |
+|---|---|
+| Python (`services/engine`) | `load_dotenv(find_dotenv())` atau path eksplisit ke root |
+| Node/TS (`apps/server`, `apps/mcp-server`, `services/watch`) | `dotenv.config({ path: resolve(__dirname, '../../.env') })` |
+| Foundry (`contracts/`) | `source ../.env` sebelum `forge script`, atau `--env-file ../.env` |
+| Vite (`apps/web`) | **wajib** set `envDir: '../..'` di `vite.config.ts` — Vite default membaca `.env` dari folder app, bukan root. Hanya var ber-prefix `VITE_` yang terekspos ke browser. |
+
+> ⚠️ **Jangan pernah taruh private key di var ber-prefix `VITE_`** — apa pun yang `VITE_*` ikut ter-bundle ke JavaScript publik dan terbaca siapa saja. Cert page hanya butuh RPC + address kontrak (semuanya memang publik).
 
 ---
 
@@ -518,36 +507,64 @@ VITE_ADDRESSES=                   # path/isi addresses.testnet.json
 
 ## 11. PEMBAGIAN TUGAS — DUA ORANG, DUA AI (maksimal independen)
 
-Proyek dikerjakan **2 orang**, masing-masing dengan AI coding agent-nya sendiri (**Claude Code atau Codex** — bebas, satu orang satu agent). Prinsip utama: **dua AI tidak boleh mengedit file yang sama** → pembagian dibuat **per-repo** (lebih keras dari per-direktori), dan batas antar-orang = **§3 Interface Freeze**. Setelah §3 disepakati H1, keduanya membangun & menguji **sendiri-sendiri** — satu-satunya momen wajib bertemu = serah-terima ABI (H3 malam) dan smoke test bersama (H5).
+Proyek dikerjakan **2 orang**, masing-masing dengan AI coding agent-nya sendiri (**Claude Code atau Codex** — bebas, satu orang satu agent). Prinsip utama: **dua AI tidak boleh mengedit file yang sama** → pembagian dibuat **per-folder top-level di dalam satu monorepo**, dan batas antar-orang = **§3 Interface Freeze**. Setelah §3 disepakati H1, keduanya membangun & menguji **sendiri-sendiri** — satu-satunya momen wajib bertemu = serah-terima ABI (H3 malam) dan smoke test bersama (H5).
+
+> **Catatan struktur:** proyek ini **satu repo (monorepo)**, bukan tiga repo terpisah. Konsekuensinya konflik git **mungkin terjadi** dan harus dicegah secara aktif lewat §11.4 — bukan dianggap mustahil.
 
 ### 11.1 Matriks kepemilikan (nol tabrakan file)
 
-| | **PERSON A — Dien ("Off-chain Brain")** | **PERSON B — teman ("On-chain & Proof Page")** |
+| | **PERSON A — Dien ("Off-chain Brain")** | **PERSON B — Wangsit ("On-chain & Proof Page")** |
 |---|---|---|
 | AI agent | Claude Code / Codex (pilih satu) | Claude Code / Codex (pilih satu) |
 | Stack | Python (engine) + Node/TS (gateway, watch) | Solidity/Foundry + Vite/viem |
-| Repo **milik** | `cachet/` — `engine/`, `gateway/`, `watch/`, `scripts/` | `cachet-contracts/` + `cachet-cert-page/` |
+| Folder **milik** | `services/engine/` · `services/watch/` · `apps/server/` · `apps/mcp-server/` · `scripts/` | `contracts/` (termasuk `contracts/script/`) · `apps/web/` |
 | Tugas | A1 Engine · A2 Pre-seed · A3 Gateway+x402 · A4 Watch · A5 Integrasi+ASP (§4) | B1 Foundry+MockUSDT · B2 4 kontrak+test · B3 Cert page · B4 Demo script+runbook (§5) |
 | Bergantung ke lawan lewat | ABI + `addresses.testnet.json` (H3 malam) — sebelum itu pakai **stub §11.3** | Address signer gateway (H1) — setelah itu **nol dependency** ke A |
 
-**Aturan keras:** AI milik A tidak pernah membuka/mengedit repo B, dan sebaliknya. Kebutuhan lintas-repo diselesaikan lewat artefak §11.2, bukan lewat edit langsung.
+**Pemetaan nama:** dokumen ini kadang menyebut komponen dengan nama lama (`engine/`, `gateway/`, `watch/`, `cert page`). Padanannya di repo:
+
+| Sebutan di §4/§5 | Folder nyata | Pemilik |
+|---|---|---|
+| Originality Engine | `services/engine/` | A |
+| Gateway (REST + x402 + EIP-712) | `apps/server/` | A |
+| MCP tools surface (§3.3) | `apps/mcp-server/` | A |
+| Watch worker | `services/watch/` | A |
+| Pre-seed & utility script | `scripts/` | A |
+| Kontrak Foundry + deploy + `DemoFlow` | `contracts/` | B |
+| Certificate page | `apps/web/` | B |
+
+**Zona bersama (bukan milik siapa pun sendirian — wajib PR + review pihak lain):**
+
+| Path | Isi | Siapa yang menulis |
+|---|---|---|
+| `packages/contracts-abi/` | `abi/*.json` + `addresses.testnet.json` | **B menulis**, A hanya membaca (titik temu #2) |
+| `docs/` | dokumen ini + delivery plan | siapa pun, tapi §3 butuh persetujuan dua pihak |
+| root (`.env.example`, `tsconfig.base.json`, `.gitignore`, `claude.md`, `.github/CODEOWNERS`) | konfigurasi bersama | siapa pun, wajib review |
+
+**Aturan keras:** AI milik A tidak pernah membuka/mengedit folder milik B, dan sebaliknya. Kebutuhan lintas-folder diselesaikan lewat artefak §11.2, bukan lewat edit langsung. Kalau butuh sesuatu dari folder lawan → minta orangnya, jangan edit sendiri.
 
 ### 11.2 Titik temu (HANYA 3 — jaga ketat, jangan tambah)
 
 1. **§3.1 Solidity interfaces + §3.2 JSON schema** — dibekukan H1. B implement persis; A compile sendiri jadi ABI stub. Perubahan = sepakat dua pihak + 1 baris changelog di §3 **sebelum** kode diubah.
-2. **`abi/*.json` + `addresses.testnet.json` + address MockUSDT** — B → A, **H3 malam** (satu-satunya blocking nyata di seluruh timeline).
+2. **`packages/contracts-abi/`** — `abi/*.json` + `addresses.testnet.json` + address MockUSDT. B → A, **H3 malam** (satu-satunya blocking nyata di seluruh timeline). B commit ke folder ini; A `import`/baca dari sini, **tidak pernah menulis** ke sini.
 3. **Address signer gateway** (A → B, H1, untuk `onlyGateway`) + **URL pattern cert page** (B → A, H4, untuk response mint).
 
 ### 11.3 Stub handshake (nol saling tunggu sampai integrasi)
 
-- **A tidak menunggu B:** H1, A compile interface §3.1 → ABI stub sendiri + implement `ChainClient` **in-memory** (A3.4): mint/register/challenge disimulasikan di memori dengan state konsisten. Seluruh A1–A4 dibangun & di-test atas stub ini; swap ke viem hanya di A5. A juga commit contoh `addresses.testnet.json` **bentuk final** (nilai dummy) supaya format serah-terima H3 sudah pasti.
+- **A tidak menunggu B:** H1, A compile interface §3.1 → ABI stub sendiri + implement `ChainClient` **in-memory** (A3.4): mint/register/challenge disimulasikan di memori dengan state konsisten. Seluruh A1–A4 dibangun & di-test atas stub ini; swap ke viem hanya di A5. A juga commit contoh `packages/contracts-abi/addresses.testnet.json` **bentuk final** (nilai dummy) supaya format serah-terima H3 sudah pasti — ini satu-satunya kali A menulis ke zona bersama itu, dan setelah H3 file tersebut milik B sepenuhnya.
 - **B tidak menunggu A sama sekali:** cert page membaca **langsung dari chain** (by design §2); satu-satunya input dari A = address signer (H1, cuma sebuah address string). Untuk menampilkan Originality Profile di cert page (opsional), B pakai fixture JSON contoh sesuai §3.2 — tidak perlu gateway A hidup.
 - **Konsekuensi:** H1–H3 = **nol blocking dua arah**. Blocking pertama & satu-satunya = artefak #2 (§11.2) di H3 malam; kalau B telat, A tetap jalan atas stub dan integrasi mundur ke H4 pagi tanpa mengubah gate H5.
 
 ### 11.4 Koordinasi harian & git workflow
 
-- **Branch per orang:** `feat/a-*` (A) dan `feat/b-*` (B) → merge ke `main` repo masing-masing via PR kecil. (Karena repo terpisah, konflik git antar-orang mustahil by design.)
-- **File titik-temu** (§3 di dokumen ini, `abi/`, `addresses.testnet.json`) = **wajib review orang satunya** sebelum dianggap sah.
+Karena ini **monorepo**, konflik git antar-orang **mungkin terjadi**. Tiga aturan berikut yang mencegahnya — bukan asumsi:
+
+1. **Tidak ada yang commit langsung ke `main`.** Semua perubahan lewat PR. Aktifkan branch protection di GitHub: require PR, require 1 approval, block force-push ke `main`. (Kalau branch protection belum aktif, aturan ini tetap berlaku sebagai kesepakatan — pelanggaran pertama = `git revert`, bukan debat.)
+2. **Branch per orang:** `feat/a-*` (A) dan `feat/b-*` (B). PR kecil, sering, jangan menumpuk seharian. Sebelum buka PR: `git pull --rebase origin main`.
+3. **CODEOWNERS per folder** (`.github/CODEOWNERS`) — GitHub otomatis meminta review dari pemilik folder. Selama folder yang disentuh milikmu sendiri, approval-nya cepat; begitu PR menyentuh folder lawan atau zona bersama, GitHub memaksa review pihak lain. Inilah jaring pengaman yang menggantikan "repo terpisah".
+
+- **PR yang menyentuh zona bersama** (§11.1: `packages/contracts-abi/`, `docs/` §3, file root) = **wajib approval orang satunya** sebelum merge.
+- **Konflik tetap terjadi?** Berarti pembagian folder dilanggar. Jangan selesaikan diam-diam dengan `--force` — hentikan, cek §11.1, perbaiki kepemilikannya.
 - **Mau ubah titik-temu?** Tulis 1 baris changelog di §3 dokumen ini **dulu** (apa yang berubah + kenapa), baru kode. Tanpa changelog = perubahan tidak berlaku.
 - **Sync harian ≤10 menit:** cek status **Gate** hari itu (§7). Gate merah → putuskan potong-scope saat itu juga (keputusan Dien), jangan dibawa tidur.
 
@@ -564,7 +581,7 @@ Proyek dikerjakan **2 orang**, masing-masing dengan AI coding agent-nya sendiri 
 | Pre-seed korpus gagal fetch (rate-limit API marketplace) | Turunkan target ke ≥1k entri (disclosure jujur soal cakupan); fixture demo *the catch* **tetap wajib** tertangkap. |
 | Faucet OKB kering / lambat | Minta di **H1** untuk semua wallet sekaligus (gateway, deployer, resolver, pembeli demo) — sudah jadi gate H1 (§7). |
 | ABI telat diserahkan (gate H3 gagal) | A tetap produktif atas stub (§11.3); integrasi mundur ke H4 pagi; telat > ½ hari → potong-scope urutan §7. |
-| Dua AI menimpa file yang sama | §11: repo terpisah per orang + titik temu hanya 3 + wajib review PR untuk file titik-temu. |
+| Dua AI menimpa file yang sama | §11: kepemilikan **per-folder** + `.github/CODEOWNERS` + branch per orang + tidak ada commit langsung ke `main` + titik temu hanya 3. Monorepo = konflik mungkin terjadi, jadi pagarnya harus aktif (§11.4), bukan diasumsikan. |
 | Alamat/RPC testnet berubah | Verifikasi §1.4 di H1; semua via `.env` (§8), tak ada hardcode. |
 
 ---
