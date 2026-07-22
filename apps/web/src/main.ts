@@ -22,8 +22,8 @@ async function route(): Promise<void> {
 
   const idStr = match[1]!;
   const certId = BigInt(idStr);
-  document.title = `Certificate #${certId} — Cachet`;
-  app.innerHTML = loadingView(certId);
+  document.title = `Certificate #${certId} · Cachet`;
+  app.innerHTML = loadingView();
 
   try {
     const cert = await loadCert(certId);

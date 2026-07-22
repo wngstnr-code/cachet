@@ -5,6 +5,16 @@ import { certAge, esc, fmtDate, fmtDateTime, fmtUSDT, shortAddr, shortHex } from
 
 const CERT_ADDR = addresses.contracts.certificate;
 
+/** URI panjang (data URI ~KB) jangan di-dump mentah — pendekkan + terangkan.
+ *  Untuk data URI, fakta "tersimpan on-chain" justru poin jualnya. */
+function shortURI(uri: string): string {
+  if (uri.startsWith("data:")) {
+    const kind = uri.slice(5, uri.indexOf(";") > 0 ? uri.indexOf(";") : 40);
+    return `data URI (${kind}, ${uri.length.toLocaleString("en-US")} chars, stored fully on-chain)`;
+  }
+  return uri.length > 80 ? `${uri.slice(0, 72)}…` : uri;
+}
+
 function shell(inner: string, title = ""): string {
   return `
     <div class="page">
@@ -17,23 +27,26 @@ function shell(inner: string, title = ""): string {
     </div>`;
 }
 
-// ── Root lookup ────────────────────────────────────────────────────────
+// ── Root lookup: tanpa masthead, kartu di tengah layar ─────────────────
 export function homeView(): string {
-  return shell(`
-    <div class="lookup">
-      <div class="brand">Cachet</div>
-      <p>Public registry of first-seen certificates on ${esc(addresses.chain.name)}.
-         Every certificate on this site is verifiable on-chain — you do not need to trust Cachet.</p>
-      <form id="lookup-form">
-        <input name="certId" inputmode="numeric" placeholder="Certificate ID" autofocus />
-        <button type="submit">View certificate</button>
-      </form>
-      <div class="form-error" id="lookup-error"></div>
-    </div>`);
+  return `
+    <div class="home">
+      <div class="lookup">
+        <div class="brand">Cachet</div>
+        <p>Public registry of first-seen certificates on ${esc(addresses.chain.name)}.
+           Every certificate on this site is verifiable on-chain. You do not need to trust Cachet.</p>
+        <form id="lookup-form">
+          <input name="certId" inputmode="numeric" placeholder="Certificate ID" autofocus />
+          <button type="submit">View certificate</button>
+        </form>
+        <div class="form-error" id="lookup-error"></div>
+        <div class="home-net">${esc(addresses.chain.name)} · chain ${addresses.chain.chainId}</div>
+      </div>
+    </div>`;
 }
 
 // ── Loading / error / not found ────────────────────────────────────────
-export function loadingView(certId: bigint): string {
+export function loadingView(): string {
   return shell(
     `<div class="hero skeleton">
        <div><div class="block"></div></div>
@@ -42,7 +55,6 @@ export function loadingView(certId: bigint): string {
          <div class="bar wide"></div><div class="bar narrow"></div><div class="bar"></div>
        </div>
      </div>`,
-    `Certificate #${certId}`,
   );
 }
 
@@ -62,7 +74,7 @@ export function rpcErrorView(certId: string): string {
     <div class="page-status">
       <h2>Could not reach ${esc(addresses.chain.name)}</h2>
       <p>This page reads certificate data directly from the chain, and the RPC endpoint
-         did not respond. The certificate itself is unaffected — the chain remains the
+         did not respond. The certificate itself is unaffected; the chain remains the
          source of truth.</p>
       <p><a class="ext" href="${explorerAddress(CERT_ADDR)}" target="_blank" rel="noopener">Check the contract on OKX explorer instead</a></p>
       <p><a href="/cert/${esc(certId)}">Try again</a></p>
@@ -111,11 +123,11 @@ function statusRow(c: CertView, status: CertStatus): string {
 function challengeLabel(ch: ChallengeRow): string {
   switch (ch.status) {
     case ChallengeStatus.Open:
-      return "Challenge opened — awaiting resolution";
+      return "Challenge opened, awaiting resolution";
     case ChallengeStatus.UpheldChallengerWon:
-      return "Resolved — challenge upheld, certificate revoked";
+      return "Resolved: challenge upheld, certificate revoked";
     case ChallengeStatus.DismissedChallengerLost:
-      return "Resolved — challenge dismissed, certificate survived";
+      return "Resolved: challenge dismissed, certificate survived";
     default:
       return "Unknown";
   }
@@ -153,10 +165,13 @@ export function certView(c: CertView, imageURL: string | null): string {
 
   const artwork = imageURL
     ? `<img src="${esc(imageURL)}" alt="Certified asset for certificate #${c.certId}" />
-       <figcaption>asset from tokenURI: ${esc(c.tokenURI)}</figcaption>`
+       <figcaption>
+         <span class="cap-label">asset from tokenURI</span>
+         <span class="cap-value">${esc(shortURI(c.tokenURI))}</span>
+       </figcaption>`
     : `<div class="placeholder">
-         Asset preview unavailable — the metadata URI does not resolve to an image.
-         <span class="uri">${esc(c.tokenURI)}</span>
+         Asset preview unavailable: the metadata URI does not resolve to an image.
+         <span class="uri">${esc(shortURI(c.tokenURI))}</span>
        </div>`;
 
   return shell(
@@ -200,15 +215,15 @@ export function certView(c: CertView, imageURL: string | null): string {
       <h2>Verify independently</h2>
       <div class="verify-links">
         <a class="ext" href="${explorerAddress(CERT_ADDR)}" target="_blank" rel="noopener">
-          Certificate contract<span class="where">OKX explorer</span></a>
+          <span class="what">Certificate contract</span><span class="where">OKX explorer</span></a>
         <a class="ext" href="${explorerAddress(CERT_ADDR)}/nft/${c.certId}" target="_blank" rel="noopener">
-          This token<span class="where">OKX explorer</span></a>
+          <span class="what">This token</span><span class="where">OKX explorer</span></a>
         <a class="ext" href="${sourcifyAddress(CERT_ADDR)}" target="_blank" rel="noopener">
-          Contract source code<span class="where">Sourcify</span></a>
+          <span class="what">Contract source code</span><span class="where">Sourcify</span></a>
         ${
           resolveURI(c.assetURI)
             ? `<a class="ext" href="${esc(resolveURI(c.assetURI)!)}" target="_blank" rel="noopener">
-                 Registered asset URI<span class="where">${esc(c.assetURI)}</span></a>`
+                 <span class="what">Registered asset URI</span><span class="where">${esc(shortURI(c.assetURI))}</span></a>`
             : ""
         }
       </div>
@@ -216,12 +231,11 @@ export function certView(c: CertView, imageURL: string | null): string {
 
     <footer class="fineprint">
       First-seen in the Cachet registry at <span class="mono">${fmtDateTime(c.registeredAt)}</span>.
-      This records when the work was first registered with Cachet — it is <em>not</em> a claim of
+      This records when the work was first registered with Cachet. It is <em>not</em> a claim of
       originality across the internet. Coverage is a collateralized guarantee, capped at
       ${fmtUSDT(BigInt(addresses.params.maxDeclaredValue))} USDT during bootstrap, and follows the
       current NFT holder. Disputes are adjudicated by a resolver after a public liveness window.
     </footer>
     `,
-    `Certificate of First-Seen Registration`,
   );
 }
