@@ -9,6 +9,7 @@ import rateLimit from "@fastify/rate-limit";
 import type { Deps } from "./config.js";
 import { AppError } from "./errors.js";
 import { registerRoutes } from "./routes.js";
+import { registerX402 } from "./x402/plugin.js";
 
 export interface BuildAppOptions {
   uploadLimitBytes?: number;
@@ -22,6 +23,9 @@ export async function buildApp(deps: Deps, opts: BuildAppOptions = {}): Promise<
   });
 
   await app.register(rateLimit, { max: opts.rateLimitMax ?? 120, timeWindow: "1 minute" });
+
+  // x402 payment guard — 402 di onRequest sebelum body diparse. Bypass di dev.
+  registerX402(app, deps.x402);
 
   app.setErrorHandler((err: FastifyError, _req, reply) => {
     if (err instanceof AppError) {

@@ -53,6 +53,7 @@ export async function makeApp(opts: {
   stub?: StubChainClient;
   engine?: FakeEngineClient;
   demoMode?: boolean;
+  x402?: Partial<Deps["x402"]>;
 } = {}) {
   const chain = opts.stub ?? new StubChainClient();
   const engine = opts.engine ?? new FakeEngineClient(() => engineResult(opts.verdict ?? "ORIGINAL"));
@@ -66,6 +67,13 @@ export async function makeApp(opts: {
     certPageBase: "https://cachet.test",
     demoMode: opts.demoMode ?? false,
     uploadLimitBytes: 15 * 1024 * 1024,
+    x402: {
+      bypass: true, // default: route test tak perlu bayar
+      network: "eip155:1952",
+      asset: "0x9ad14e783DCe270BE1214153E940aa686f91fa40",
+      payTo: signer.address,
+      ...opts.x402,
+    },
   };
   const app = await buildApp(deps);
   return { app, deps, chain, engine, signer };
