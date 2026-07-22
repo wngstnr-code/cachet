@@ -152,4 +152,4 @@ packages/    contracts-abi: ABIs + deployed addresses (the on-chain/off-chain co
 
 ## Team
 
-Built by **Dien** (off-chain brain: engine, gateway, watch) and **Wangsit** (on-chain + proof page: contracts, cert page), pair-programming with two AI agents in one monorepo.
+Built by [**@scientivan**](https://github.com/scientivan) (off-chain brain: engine, gateway, watch) and [**@wngstnr-code**](https://github.com/wngstnr-code) (on-chain + proof page: contracts, cert page), pair-programming with two AI agents in one monorepo.
