@@ -119,10 +119,10 @@ preflight() {
   local engine_image gateway_image engine_sha gateway_sha
   engine_image="$(env_value "${DEPLOY_ENV}" ENGINE_IMAGE)"
   gateway_image="$(env_value "${DEPLOY_ENV}" GATEWAY_IMAGE)"
-  [[ "${engine_image}" =~ ^ghcr\.io/wngstnr-code/cachet-engine:sha-([0-9a-f]{40})$ ]] \
+  [[ "${engine_image}" =~ ^ghcr\.io/scientivan/cachet-engine:sha-([0-9a-f]{40})$ ]] \
     || die "ENGINE_IMAGE must use a full immutable Git SHA tag"
   engine_sha="${BASH_REMATCH[1]}"
-  [[ "${gateway_image}" =~ ^ghcr\.io/wngstnr-code/cachet-gateway:sha-([0-9a-f]{40})$ ]] \
+  [[ "${gateway_image}" =~ ^ghcr\.io/scientivan/cachet-gateway:sha-([0-9a-f]{40})$ ]] \
     || die "GATEWAY_IMAGE must use a full immutable Git SHA tag"
   gateway_sha="${BASH_REMATCH[1]}"
   [[ "${engine_sha}" == "${gateway_sha}" ]] || die "engine and gateway image SHAs differ"

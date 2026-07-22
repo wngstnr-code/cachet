@@ -4,7 +4,7 @@ set -Eeuo pipefail
 # Build on Dien's Mac/CI and push linux/amd64 images to GHCR. The VPS never builds.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-REGISTRY_NAMESPACE="${REGISTRY_NAMESPACE:-ghcr.io/wngstnr-code}"
+REGISTRY_NAMESPACE="${REGISTRY_NAMESPACE:-ghcr.io/scientivan}"
 GIT_COMMIT="$(git -C "${REPO_ROOT}" rev-parse HEAD)"
 
 [[ "${GIT_COMMIT}" =~ ^[0-9a-f]{40}$ ]] || {

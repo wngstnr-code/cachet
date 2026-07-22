@@ -142,8 +142,8 @@ changing the environment variable on the current non-ML image.
 Production images use immutable commit-SHA tags:
 
 ```text
-ghcr.io/wngstnr-code/cachet-engine:sha-${GIT_COMMIT}
-ghcr.io/wngstnr-code/cachet-gateway:sha-${GIT_COMMIT}
+ghcr.io/scientivan/cachet-engine:sha-${GIT_COMMIT}
+ghcr.io/scientivan/cachet-gateway:sha-${GIT_COMMIT}
 ```
 
 `GIT_COMMIT` is the full 40-character commit ID being released; it is resolved by
