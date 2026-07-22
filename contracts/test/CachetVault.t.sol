@@ -300,7 +300,10 @@ contract CachetVaultTest is Test {
         vm.warp(block.timestamp + 73 hours);
 
         // Kuras vault lewat jalur sah supaya saldo benar-benar nol.
+        // G2: bond challenge 99 di-collect DI SINI (openedAt = sekarang, di
+        // dalam coverage) — kelayakan dinilai pada openedAt, bukan saat resolve.
         vm.startPrank(cm);
+        vault.collectChallengeBond(99, gateway, 0);
         vault.settleChallengeWon(certId, 99, creator, creator);
         vm.stopPrank();
 

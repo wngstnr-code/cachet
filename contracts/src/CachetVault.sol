@@ -70,6 +70,14 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
     mapping(uint256 => CertFunds) public certFunds;
     mapping(uint256 => uint256) public challengeBonds;
 
+    /// @notice G2: timestamp saat gugatan DIBUKA, dicatat di `collectChallengeBond`
+    ///         (dipanggil sinkron dari `challenge()`, jadi `block.timestamp` di
+    ///         sana = openedAt). Kelayakan coverage dinilai terhadap momen INI,
+    ///         bukan momen resolve — jendela liveness tidak boleh menggerus
+    ///         ekor coverage, dan gugatan yang dibuka sebelum coverage aktif
+    ///         tidak berhak atas klaim.
+    mapping(uint256 => uint64) public challengeOpenedAt;
+
     error NotCertificate(address caller, address expected);
     error NotChallengeManager(address caller, address expected);
     error NotWired(string what);
@@ -224,6 +232,7 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
         nonReentrant
     {
         challengeBonds[challengeId] = amount;
+        challengeOpenedAt[challengeId] = uint64(block.timestamp); // G2
 
         _payToken.safeTransferFrom(challenger, address(this), amount);
         emit ChallengeBondCollected(challengeId, challenger, amount);
@@ -264,7 +273,7 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
         uint256 declaredValue = d.declaredValue;
         uint256 paid = 0;
 
-        if (_coverageApplies(certId, d)) {
+        if (_coverageApplies(certId, d, challengeOpenedAt[challengeId])) {
             paid = _pay(certHolder, declaredValue);
             if (paid < declaredValue) emit PartialPayout(certId, declaredValue, paid);
             emit ClaimPaid(certId, certHolder, paid);
@@ -332,7 +341,18 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
     ///
     ///      Sertifikat yang sudah dicabut sebelumnya tidak mungkin sampai ke
     ///      sini: `challenge()` menolaknya lebih dulu.
-    function _coverageApplies(uint256 certId, ICachetCertificate.CertData memory d)
+    ///
+    ///      G2: jendela dinilai terhadap `openedAt` (saat gugatan dibuka),
+    ///      BUKAN `block.timestamp` saat resolve. Dua lubang yang ditutup:
+    ///      - ekor: gugatan sah di ujung coverage tidak lagi gugur hanya
+    ///        karena liveness mendorong resolve melewati `coverageEnd`;
+    ///      - tepi depan: gugatan yang dibuka SEBELUM `coverageStart` (masa
+    ///        tunggu) tidak berhak klaim meski resolve mendarat setelahnya —
+    ///        masa tunggu jadi benar-benar berarti.
+    ///      `openedAt == 0` (bond tak pernah ditarik untuk challengeId ini)
+    ///      otomatis gagal — konsisten dengan "tidak ada bond, tidak ada
+    ///      coverage".
+    function _coverageApplies(uint256 certId, ICachetCertificate.CertData memory d, uint64 openedAt)
         private
         view
         returns (bool)
@@ -350,8 +370,7 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
         if (!certFunds[certId].collected) return false;
 
         if (!d.insurable) return false;
-        // forge-lint: disable-next-line(block-timestamp)
-        return block.timestamp >= d.coverageStart && block.timestamp <= d.coverageEnd;
+        return openedAt >= d.coverageStart && openedAt <= d.coverageEnd;
     }
 
     /// @dev INVARIANT §9.3. Tidak pernah mengirim melebihi saldo; mengembalikan

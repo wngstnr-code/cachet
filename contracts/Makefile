@@ -8,7 +8,7 @@
 -include ../.env
 export
 
-.PHONY: help build test test-gas fmt clean deploy-mockusdt deploy verify-env verify-deploy-env verify-demo-env demo-prep demo demo-resolve verify verify-status
+.PHONY: help build test test-gas fmt clean deploy-mockusdt deploy verify-env verify-deploy-env verify-demo-env demo-prep demo demo-challenge demo-resolve verify verify-status
 
 help:
 	@echo "make build            — compile"
@@ -19,7 +19,8 @@ help:
 	@echo "make deploy-mockusdt  — deploy MockUSDT ke X Layer Testnet (+verifikasi)"
 	@echo "make deploy           — deploy 4 kontrak inti + wiring (+verifikasi)"
 	@echo "make demo-prep        — SEKALI: mampatkan waktu + modal vault"
-	@echo "make demo             — jalankan babak 1-3 skenario demo"
+	@echo "make demo             — babak 1-2: mint + jual (lalu tunggu coverage aktif)"
+	@echo "make demo-challenge   — babak 3: CERT_ID=.. (G2: coverage harus sudah aktif)"
 	@echo "make demo-resolve     — babak 4-5: CHALLENGE_ID=.. CERT_ID=.."
 	@echo "make demo-links       — tautan explorer tiap tx demo (untuk juri)"
 	@echo "make export-abi       — ekspor ABI ke packages/contracts-abi (untuk Person A)"
@@ -106,6 +107,14 @@ demo-prep: verify-env
 
 demo: verify-demo-env
 	forge script script/DemoFlow.s.sol:DemoFlow --rpc-url $(RPC_URL) --broadcast -vvv
+
+# Babak 3 terpisah (G2): gugatan baru sah setelah coverage aktif — kelayakan
+# klaim dinilai pada momen gugatan dibuka, bukan saat resolve.
+demo-challenge: verify-demo-env
+	@test -n "$(CERT_ID)" || (echo "❌ pakai: make demo-challenge CERT_ID=1"; exit 1)
+	forge script script/DemoFlow.s.sol:DemoFlow \
+		--sig "challengeCert(uint256)" $(CERT_ID) \
+		--rpc-url $(RPC_URL) --broadcast -vvv
 
 demo-resolve: verify-demo-env
 	@test -n "$(CHALLENGE_ID)" || (echo "❌ pakai: make demo-resolve CHALLENGE_ID=1 CERT_ID=1"; exit 1)

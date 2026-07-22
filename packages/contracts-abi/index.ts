@@ -2066,6 +2066,25 @@ export const CachetVaultAbi = [
   },
   {
     "type": "function",
+    "name": "challengeOpenedAt",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "collectChallengeBond",
     "inputs": [
       {

@@ -10,10 +10,10 @@
     "_comment": "chainId 1952 (0x7a0), BUKAN 195. Diverifikasi lewat eth_chainId 21 Jul. 195 adalah chainId X1 testnet, nama lama X Layer sebelum rebrand."
   },
   "contracts": {
-    "registry": "0x9ca497a98019bB7D666c19D060053677fbeb6903",
-    "certificate": "0xeB8CA2bBCeccCdbD6C5Ba480E6757eF22955E5E5",
-    "vault": "0x012adCAf1ae61504d7506E7a431B59E0818aB3a9",
-    "challengeManager": "0x9458B38DF05C1bD2D790B63CFe1F852B67966EC2",
+    "registry": "0xd9b0c026c22Fb1844ec35A68a0b0E571b9c20A33",
+    "certificate": "0xa08d6b56E82D372dAC606eFf96E0fA7f48FBb9E4",
+    "vault": "0x72B5F5E72d4F502d267cc96bE0C0a8D6c29e7797",
+    "challengeManager": "0xa43D1fFEC04EE6455eb575aCf964f34a0E9a87DB",
     "mockUSDT": "0x9ad14e783DCe270BE1214153E940aa686f91fa40"
   },
   "roles": {
@@ -38,8 +38,8 @@
     "_comment": "Nilai default kontrak. Bisa berubah lewat setter onlyOwner — BACA DARI CHAIN, jangan hardcode. Saat demo, waitingPeriod & livenessWindow dipercepat (lihat PrepareDemo.s.sol)."
   },
   "deployment": {
-    "deployedAt": "2026-07-21T23:49:53+00:00",
-    "blockNumber": 36218956,
+    "deployedAt": "2026-07-22T00:23:17+00:00",
+    "blockNumber": 36220960,
     "deployerAddress": "0x8453D54d0A5009251BEcdB9304E14c7fa83eb230",
     "verifiedOnSourcify": true
   }

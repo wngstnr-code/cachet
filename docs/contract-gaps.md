@@ -3,14 +3,14 @@
 > **Status:** per 22 Jul 2026, setelah B1/B2a/B2b + **enam** putaran audit.
 > Audit keenam memverifikasi ulang seluruh daftar ini terhadap kode terkini
 > (pasca commit `f1a54b4`, lantai parameter): **kategori B sudah tertutup**,
-> dan ditemukan gap baru — kategori **G**. Tindak lanjut: **G1, G4, G5 kini
-> tertutup** (snapshot liveness + rapikan komentar + Ownable2Step; 164 test
-> hijau). **G2** siap tapi menunggu keputusan A+B (mengubah semantik masa
-> tunggu & merusak `DemoFlow` — lihat catatan di G2). G3 setelah deploy.
+> dan ditemukan gap baru — kategori **G**. Tindak lanjut: **G1, G2, G4, G5
+> kini tertutup** (snapshot liveness + coverage@openedAt + rapikan komentar +
+> Ownable2Step; 166 test hijau; G2 disetujui lewat delegasi Dien→B).
+> Sisa terbuka: **G3** (earmark bond — bahas setelah review) dan A/C/D/E.
 > **Tujuan:** daftar jujur semua yang BELUM tertutup, supaya keputusannya diambil
 > sadar — bukan ditemukan juri.
 >
-> 164 test hijau (pasca G1+G5), 21/21 mutasi tertangkap, coverage 99.6% baris.
+> 166 test hijau (pasca G1+G2+G5), 21/21 mutasi tertangkap, coverage 99.6% baris.
 > Angka itu mengukur apakah kode yang ADA benar. Dokumen ini soal yang
 > **tidak ada**.
 
@@ -112,7 +112,7 @@ interface beku §3.1** (`getChallenge`/`IChallengeManager` tak berubah), jadi
 tanpa koordinasi lintas-orang. Dua test regresi (perpendek & perpanjang di
 tengah gugatan) hijau.
 
-### G2. Jendela coverage dinilai saat RESOLVE, bukan saat gugatan dibuka 🟠
+### G2. Jendela coverage dinilai saat RESOLVE, bukan saat gugatan dibuka — ✅ TERTUTUP
 
 `_coverageApplies` memakai `block.timestamp` saat settle:
 
@@ -129,23 +129,27 @@ tertangkap di masa coverage. Efeknya: klausul jaminan diam-diam menyusut
 sebesar `livenessWindow` di ekor coverage. Digabung G1 (owner memperpanjang
 liveness saat gugatan terbuka), penyusutan ini bisa direkayasa.
 
-**Usulan:** nilai kelayakan coverage terhadap `c.openedAt` (saat gugatan
-dibuka), bukan saat resolve. Tanpa menyentuh `settleChallengeWon` (beku §3.1):
-Vault mencatat `openedAt` di `collectChallengeBond` (dipanggil sinkron dari
-`challenge()`, jadi `block.timestamp` di sana = openedAt) dan membacanya lagi
-saat settle — tidak perlu callback ke ChallengeManager, tidak perlu ubah tanda
-tangan fungsi.
+**Perbaikan (terpasang):** kelayakan coverage kini dinilai terhadap momen
+gugatan DIBUKA. Tanpa menyentuh `settleChallengeWon` (beku §3.1): Vault
+mencatat `challengeOpenedAt[challengeId]` di `collectChallengeBond` (dipanggil
+sinkron dari `challenge()`, jadi `block.timestamp` di sana = openedAt) dan
+`_coverageApplies` membandingkan `openedAt` dengan jendela coverage —
+`openedAt == 0` (bond tak pernah ditarik) otomatis gagal, konsisten dengan
+"tidak ada bond, tidak ada coverage".
 
-> **⚠️ Temuan saat menyiapkan perbaikan G2 (belum diputuskan):** menilai coverage
-> pada `openedAt` memperbaiki ekor coverage **tapi juga mengetatkan tepi depan**
-> — gugatan yang dibuka **selama masa tunggu** (sebelum `coverageStart`) jadi
-> tidak dibayar meski resolve mendarat setelah coverage aktif. Itu semantik yang
-> lebih benar (masa tunggu jadi berarti), **tapi merusak `DemoFlow`**: skenario
-> demo membuka gugatan tepat setelah mint (di dalam masa tunggu 10 detik yang
-> berjalan paralel dengan liveness 30 detik), lalu resolve setelah coverage
-> aktif → di semantik baru payout ke pembeli jadi NOL dan klimaks video gagal.
-> Perbaikannya kecil (buka gugatan setelah `coverageStart` di skrip + test demo),
-> tapi ini keputusan produk + deliverable bersama → **butuh sepakat A+B dulu.**
+Dua lubang tertutup sekaligus:
+- **ekor:** gugatan sah di ujung coverage tidak lagi gugur karena liveness
+  mendorong resolve melewati `coverageEnd`;
+- **tepi depan (efek samping yang diterima sadar):** gugatan yang dibuka
+  SELAMA masa tunggu tidak berhak klaim meski resolve mendarat setelah
+  coverage aktif — masa tunggu jadi benar-benar berarti.
+
+Konsekuensi demo: `DemoFlow` dipecah — babak 3 (gugatan) jadi fase
+`make demo-challenge` yang menolak jalan sebelum coverage aktif. Total durasi
+demo tetap 40 detik (10 tunggu + 30 liveness, kini berurutan). **Keputusan
+didelegasikan Dien ke B** (persetujuan lisan, 22 Jul) — tidak menyentuh §3.1
+jadi tanpa changelog freeze. +2 test regresi (ekor & tepi depan), golden path
+diverifikasi ulang end-to-end di testnet dengan semantik baru.
 
 ### G3. Bond penantang tidak dipisahkan dari kolam klaim 🟡
 
@@ -303,6 +307,9 @@ ERC-8004, seasoning otomatis on-chain, zkML, C2PA anchoring penuh.
   (lantai + `ParamBelowFloor`, test lantai hijau).
 - ~~G1 snapshot `livenessWindow` per gugatan~~ → ✅ tertutup (internal
   `ChallengeManager`, tanpa ubah §3.1, +2 test regresi).
+- ~~G2 coverage dinilai saat gugatan dibuka~~ → ✅ tertutup (Vault mencatat
+  `challengeOpenedAt`, tanpa ubah §3.1; DemoFlow dipecah `demo-challenge`;
+  delegasi Dien→B; golden path diverifikasi ulang di testnet).
 - ~~G4 rapikan komentar basi~~ → ✅ tertutup (komentar saja, nol perubahan
   perilaku).
 - ~~G5 `Ownable2Step`~~ → ✅ tertutup sebelum deploy (satu titik ubah di
@@ -313,7 +320,6 @@ ERC-8004, seasoning otomatis on-chain, zkML, C2PA anchoring penuh.
 
 | # | Pertanyaan | Biaya |
 |---|---|---|
-| G2 | Coverage dinilai saat gugatan dibuka, bukan saat resolve? **Perbaikannya siap tanpa sentuh §3.1, tapi mengubah semantik masa tunggu & merusak `DemoFlow` (lihat catatan G2) → perlu sepakat + sesuaikan skrip/test demo.** | ~10 baris + test + patch demo |
 | G3 | Earmark bond penantang, atau cukup didokumentasikan? | sedang / 0 |
 | C1 | Cadangan kunci resolver / multisig? | prosedur, bukan kode |
 | A1 | Siapa yang pegang resolver — bisa orang luar? | mencari orang |

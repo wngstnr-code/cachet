@@ -582,21 +582,80 @@ contract IntegrationTest is Test {
         );
     }
 
-    function test_KlaimTepatDiAwalCoverage_Dibayar() public {
+    /// @dev G2 (tepi depan): gugatan yang dibuka SELAMA masa tunggu tidak
+    ///      berhak klaim, meski resolve mendarat setelah coverage aktif.
+    ///      Sebelum G2 kasus ini DIBAYAR — masa tunggu bisa dilompati dengan
+    ///      menggugat lebih awal dan menunggu liveness.
+    function test_G2_GugatanSelamaMasaTunggu_TidakDibayarWalauResolveSetelahAktif() public {
         uint256 certId = _mintTo(buyer);
         ICachetCertificate.CertData memory d = cert.certData(certId);
 
-        // Gugat lebih dulu, lalu resolve TEPAT saat coverage mulai berlaku.
-        vm.warp(d.coverageStart - 48 hours);
+        vm.warp(d.coverageStart - 48 hours); // masih masa tunggu
         vm.prank(challenger);
         uint256 challengeId = cm.challenge(certId, "ipfs://bukti");
 
         uint256 buyerBefore = usdt.balanceOf(buyer);
+        vm.warp(d.coverageStart); // liveness lewat, coverage kini aktif
+
+        vm.expectEmit(true, true, false, true);
+        emit CachetVault.ClaimSkippedNoCoverage(certId, buyer, DECLARED);
+
+        vm.prank(resolver);
+        cm.resolve(challengeId, true, "ipfs://putusan");
+
+        assertEq(
+            usdt.balanceOf(buyer),
+            buyerBefore,
+            "kelayakan dinilai saat gugatan DIBUKA -- masa tunggu tidak bisa dilompati"
+        );
+        assertTrue(cert.certData(certId).revoked, "pencabutan tetap terjadi");
+    }
+
+    function test_KlaimTepatDiAwalCoverage_Dibayar() public {
+        uint256 certId = _mintTo(buyer);
+        ICachetCertificate.CertData memory d = cert.certData(certId);
+
+        // G2: gugatan dibuka TEPAT saat coverage mulai berlaku -- openedAt
+        // == coverageStart adalah batas bawah inklusif.
         vm.warp(d.coverageStart);
+        vm.prank(challenger);
+        uint256 challengeId = cm.challenge(certId, "ipfs://bukti");
+
+        uint256 buyerBefore = usdt.balanceOf(buyer);
+        vm.warp(block.timestamp + 48 hours);
         vm.prank(resolver);
         cm.resolve(challengeId, true, "ipfs://putusan");
 
         assertEq(usdt.balanceOf(buyer) - buyerBefore, DECLARED, "tepat di awal jendela: dibayar penuh");
+    }
+
+    /// @dev G2 (ekor — inti perbaikan): gugatan sah yang dibuka DI DALAM masa
+    ///      coverage tetap dibayar walau jendela liveness mendorong resolve
+    ///      MELEWATI coverageEnd. Sebelum G2, klausul jaminan diam-diam
+    ///      menyusut sebesar livenessWindow di ekor coverage.
+    function test_G2_GugatanDiEkorCoverage_TetapDibayarWalauResolveLewatCoverageEnd() public {
+        uint256 certId = _mintTo(buyer);
+        ICachetCertificate.CertData memory d = cert.certData(certId);
+
+        // Dibuka 1 jam sebelum coverage berakhir -- masih SAH.
+        vm.warp(d.coverageEnd - 1 hours);
+        vm.prank(challenger);
+        uint256 challengeId = cm.challenge(certId, "ipfs://bukti");
+
+        uint256 buyerBefore = usdt.balanceOf(buyer);
+
+        // Liveness 48 jam mendorong resolve jauh melewati coverageEnd.
+        vm.warp(block.timestamp + 48 hours);
+        assertGt(block.timestamp, d.coverageEnd, "prasyarat: resolve terjadi SETELAH coverage berakhir");
+
+        vm.prank(resolver);
+        cm.resolve(challengeId, true, "ipfs://putusan");
+
+        assertEq(
+            usdt.balanceOf(buyer) - buyerBefore,
+            DECLARED,
+            "fraud tertangkap DI masa coverage wajib dibayar -- liveness tidak menggerus ekor jaminan"
+        );
     }
 
     function test_RevertWhen_BuktiKosong() public {

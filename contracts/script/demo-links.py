@@ -37,7 +37,10 @@ def collect():
         base = ROOT / "broadcast" / script / CHAIN_ID
         if not base.exists():
             continue
-        for run in sorted(base.glob("run-*.json")):
+        # Hanya *-latest.json (run-, challengeCert-, resolve-): tautan untuk
+        # TAKE TERAKHIR. File run-<timestamp> adalah riwayat — menyertakannya
+        # mencampur tx dari deployment lama yang sudah diorfankan.
+        for run in sorted(base.glob("*-latest.json")):
             if "dry-run" in str(run):
                 continue
             data = json.loads(run.read_text())
@@ -62,6 +65,12 @@ def main():
         return 0
 
     rows.sort(key=lambda r: r["ts"])
+    seen, unik = set(), []
+    for r in rows:
+        if r["hash"] not in seen:
+            seen.add(r["hash"])
+            unik.append(r)
+    rows = unik
 
     print()
     print("=" * 66)
