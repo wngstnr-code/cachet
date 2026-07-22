@@ -62,7 +62,7 @@ contract DemoFlow is Script {
 
         // ── BABAK 1: mint ke kreator ─────────────────────────────────────────
         console.log("");
-        console.log("[1/5] Menerbitkan First-Seen Certificate untuk kreator...");
+        console.log("[1/5] Issuing a First-Seen Certificate to the CREATOR...");
 
         uint256 premium = c.vault.quotePremium(DECLARED_VALUE);
         bytes32 seed = keccak256(abi.encodePacked(block.timestamp, block.number));
@@ -91,19 +91,19 @@ contract DemoFlow is Script {
         vm.stopBroadcast();
 
         console.log("      entryId:", entryId, "| certId:", certId);
-        console.log("      pemegang:", c.creator);
-        console.log("      dijamin :", DECLARED_VALUE / 1e6, "USDT");
+        console.log("      holder :", c.creator);
+        console.log("      covered:", DECLARED_VALUE / 1e6, "USDT");
 
         // ── BABAK 2: kreator menjual ke pembeli ──────────────────────────────
         console.log("");
-        console.log("[2/5] Kreator MENJUAL aset ke pembeli...");
+        console.log("[2/5] Creator SELLS the asset to a buyer...");
 
         vm.startBroadcast(vm.envUint("DEMO_CREATOR_PK"));
         IERC721(address(c.cert)).transferFrom(c.creator, c.buyer, certId);
         vm.stopBroadcast();
 
-        console.log("      pemegang baru :", IERC721(address(c.cert)).ownerOf(certId));
-        console.log("      -> jaminan IKUT PINDAH tanpa langkah tambahan");
+        console.log("      new holder :", IERC721(address(c.cert)).ownerOf(certId));
+        console.log("      -> the guarantee MOVES WITH the asset, no extra steps");
         console.log("");
 
         // Masa tunggu SENGAJA tetap hidup di demo (dipercepat, bukan dimatikan).
@@ -111,19 +111,19 @@ contract DemoFlow is Script {
         // itu mekanismenya sedang bekerja, dan penonton harus melihatnya.
         ICachetCertificate.CertData memory d = c.cert.certData(certId);
         if (c.cert.isCoverageActive(certId)) {
-            console.log("      coverage: AKTIF");
+            console.log("      coverage: ACTIVE");
         } else {
-            console.log("      coverage: BELUM AKTIF -- masih dalam masa tunggu");
-            console.log("      mulai berlaku pada timestamp:", d.coverageStart);
-            console.log("      (masa tunggu menahan klaim atas karya yang di-mint");
-            console.log("       justru karena sengketanya sudah diketahui)");
+            console.log("      coverage: NOT ACTIVE YET -- still in the waiting period");
+            console.log("      becomes active at timestamp:", d.coverageStart);
+            console.log("      (the waiting period blocks claims on works minted");
+            console.log("       precisely because the dispute was already known)");
         }
 
         // G2: kelayakan klaim dinilai saat gugatan DIBUKA. Gugatan yang dibuka
         // selama masa tunggu berakhir tanpa payout — jadi babak 3 dipisah jadi
         // fase sendiri, dijalankan SETELAH coverage menyala (~10 detik).
         console.log("");
-        console.log("JEDA DI SINI sampai coverage aktif (timestamp di atas), lalu:");
+        console.log("PAUSE HERE until coverage is active (timestamp above), then run:");
         console.log("  make demo-challenge CERT_ID=%s", certId);
 
         _reportBalances(c);
@@ -135,32 +135,41 @@ contract DemoFlow is Script {
     function challengeCert(uint256 certId) external {
         Ctx memory c = _ctx();
 
-        // Tolak dini dengan sisa detik yang bisa dibaca, bukan demo yang
-        // diam-diam berakhir tanpa payout 40 detik kemudian.
+        // Tolak dini dengan alasan yang bisa dibaca, bukan demo yang diam-diam
+        // berakhir tanpa payout 40 detik kemudian. Tiga kasus dibedakan supaya
+        // pesannya tepat — dan supaya `coverageStart - block.timestamp` tidak
+        // underflow saat coverage sudah lewat mulainya (cert revoked/expired).
         ICachetCertificate.CertData memory d = c.cert.certData(certId);
         if (!c.cert.isCoverageActive(certId)) {
-            console.log("coverage BELUM aktif. Tunggu", d.coverageStart - block.timestamp, "detik lagi.");
-            revert("Coverage belum aktif -- gugatan sekarang = klaim hangus (G2)");
+            if (d.revoked) {
+                console.log("cert is REVOKED -- it already lost a challenge.");
+                console.log("Run 'make demo' again to mint a FRESH cert, then challenge that one.");
+            } else if (block.timestamp < d.coverageStart) {
+                console.log("coverage NOT active yet. Wait", d.coverageStart - block.timestamp, "more seconds.");
+            } else {
+                console.log("coverage window already ENDED at", d.coverageEnd);
+            }
+            revert("Coverage not active -- challenging now would forfeit the claim (G2)");
         }
 
         console.log("");
-        console.log("[3/5] Penantang membuka gugatan dengan bukti...");
-        console.log("      coverage: AKTIF sejak", d.coverageStart, "-- klaim akan dinilai pada momen INI");
+        console.log("[3/5] Challenger opens a challenge with evidence...");
+        console.log("      coverage: ACTIVE since", d.coverageStart, "-- the claim is assessed at THIS moment");
 
         vm.startBroadcast(vm.envUint("DEMO_CHALLENGER_PK"));
-        uint256 challengeId = c.cm.challenge(certId, "ipfs://bukti-karya-lebih-tua");
+        uint256 challengeId = c.cm.challenge(certId, "ipfs://evidence-earlier-work");
         vm.stopBroadcast();
 
         console.log("      challengeId:", challengeId);
-        console.log("      penantang  :", c.challenger);
+        console.log("      challenger :", c.challenger);
 
         // ── BABAK 4: liveness + putusan ──────────────────────────────────────
         uint64 liveness = c.cm.livenessWindow();
         console.log("");
-        console.log("[4/5] Menunggu jendela liveness:", liveness, "detik");
-        console.log("      (jendela publik ini yang menahan resolver memutus terlalu cepat)");
+        console.log("[4/5] Waiting out the liveness window:", liveness, "seconds");
+        console.log("      (this public window is what stops the resolver from ruling too fast)");
         console.log("");
-        console.log("      JEDA DI SINI. Setelah jendela lewat:");
+        console.log("      PAUSE HERE. Once the window has passed:");
         console.log("      make demo-resolve CHALLENGE_ID=%s CERT_ID=%s", challengeId, certId);
 
         _reportBalances(c);
@@ -179,44 +188,44 @@ contract DemoFlow is Script {
         uint256 vaultBefore = c.vault.balanceOfVault();
 
         console.log("");
-        console.log("[5/5] Resolver memutus: penantang MENANG...");
+        console.log("[5/5] Resolver rules: the challenger WINS...");
 
         vm.startBroadcast(vm.envUint("RESOLVER_PK"));
-        c.cm.resolve(challengeId, true, "ipfs://putusan-resolver");
+        c.cm.resolve(challengeId, true, "ipfs://resolver-ruling");
         vm.stopBroadcast();
 
         uint256 buyerGain = c.usdt.balanceOf(c.buyer) - buyerBefore;
         uint256 creatorGain = c.usdt.balanceOf(c.creator) - creatorBefore;
 
         console.log("");
-        console.log("=== ALIRAN UANG ===");
-        console.log("Dari kolam jaminan (vault):");
-        console.log("  saldo sebelum :", vaultBefore / 1e6, "USDT");
-        console.log("  saldo sesudah :", c.vault.balanceOfVault() / 1e6, "USDT");
+        console.log("=== WHERE THE MONEY WENT ===");
+        console.log("From the collateral pool (vault):");
+        console.log("  balance before:", vaultBefore / 1e6, "USDT");
+        console.log("  balance after :", c.vault.balanceOfVault() / 1e6, "USDT");
         console.log("");
-        console.log("Ke mana perginya:");
-        console.log("  PEMBELI  (pemegang aset saat ini) :", buyerGain / 1e6, "USDT  <-- klaim");
+        console.log("Destinations:");
+        console.log("  BUYER     (current asset holder) :", buyerGain / 1e6, "USDT  <-- the claim");
         console.log(
-            "  PENANTANG (yang membuktikan)      :",
+            "  CHALLENGER (who proved it)       :",
             (c.usdt.balanceOf(c.challenger) - challengerBefore) / 1e6,
-            "USDT  <-- bond kembali + bounty"
+            "USDT  <-- bond back + bounty"
         );
         console.log(
-            "  KREATOR  (yang menerbitkan)       :", creatorGain / 1e6, "USDT  <-- NOL, bond-nya di-slash"
+            "  CREATOR   (who issued it)        :", creatorGain / 1e6, "USDT  <-- ZERO, their bond was slashed"
         );
         console.log("");
-        console.log("Status sertifikat:");
-        console.log("  dicabut permanen :", c.cert.certData(certId).revoked);
-        console.log("  pemegang NFT     :", IERC721(address(c.cert)).ownerOf(certId));
-        console.log("  (NFT TIDAK dibakar -- tetap ada sebagai catatan publik)");
+        console.log("Certificate status:");
+        console.log("  permanently revoked:", c.cert.certData(certId).revoked);
+        console.log("  NFT holder         :", IERC721(address(c.cert)).ownerOf(certId));
+        console.log("  (the NFT is NOT burned -- it remains as a public record)");
         console.log("");
 
         // Pagar terakhir: kalau ini gagal, JANGAN dipakai untuk rekaman.
-        require(buyerGain == DECLARED_VALUE, "DEMO GAGAL: pembeli tidak menerima nilai penuh");
-        require(creatorGain == 0, "DEMO GAGAL: kreator seharusnya tidak menerima apa pun");
+        require(buyerGain == DECLARED_VALUE, "DEMO FAILED: buyer did not receive the full covered value");
+        require(creatorGain == 0, "DEMO FAILED: creator should have received nothing");
 
-        console.log("OK -- jaminan mengikuti PEMBELI, bukan kreator.");
-        console.log("Inilah pembeda utama Cachet.");
+        console.log("OK -- the guarantee followed the BUYER, not the creator.");
+        console.log("This is Cachet's core differentiator.");
 
         _reportBalances(c);
     }
@@ -233,52 +242,52 @@ contract DemoFlow is Script {
         (,, uint64 openedAt,,) = c.cm.getChallenge(challengeId);
 
         console.log("");
-        console.log("--- status sebelum putusan ---");
+        console.log("--- status before ruling ---");
         // G2: kelayakan dinilai pada saat gugatan DIBUKA, bukan saat resolve.
         if (openedAt >= d.coverageStart && openedAt <= d.coverageEnd) {
-            console.log("coverage: BERLAKU saat gugatan dibuka (", openedAt, ")");
-            console.log("          klaim akan dibayar walau resolve lewat coverageEnd");
+            console.log("coverage: IN FORCE when the challenge was opened (", openedAt, ")");
+            console.log("          the claim pays out even if resolve happens past coverageEnd");
         } else {
-            console.log("coverage: TIDAK berlaku saat gugatan dibuka. Klaim akan DILEWATI.");
-            console.log("          jendela :", d.coverageStart, "-", d.coverageEnd);
-            console.log("          dibuka  :", openedAt);
+            console.log("coverage: NOT in force when the challenge was opened. Claim will be SKIPPED.");
+            console.log("          window :", d.coverageStart, "-", d.coverageEnd);
+            console.log("          opened :", openedAt);
         }
-        uint64 bolehSetelah = openedAt + c.cm.livenessWindow();
-        if (block.timestamp < bolehSetelah) {
+        uint64 earliestResolve = openedAt + c.cm.livenessWindow();
+        if (block.timestamp < earliestResolve) {
             console.log("");
-            console.log("jendela liveness belum lewat. Tunggu", bolehSetelah - block.timestamp, "detik lagi.");
-            revert("Liveness belum lewat -- lihat sisa detik di atas");
+            console.log("liveness window not over yet. Wait", earliestResolve - block.timestamp, "more seconds.");
+            revert("Liveness window still open -- see remaining seconds above");
         }
-        console.log("liveness : LEWAT (dibuka", openedAt, ")");
+        console.log("liveness : PASSED (opened at", openedAt, ")");
     }
 
     /// @dev Gagal lebih awal dengan pesan yang bisa dibaca manusia, daripada
     ///      revert kriptik di tengah rekaman.
     function _preflight(Ctx memory c) internal view {
         require(
-            c.cert.waitingPeriod() <= 1 hours, "Jalankan 'make demo-prep' dulu: waitingPeriod masih panjang"
+            c.cert.waitingPeriod() <= 1 hours, "Run 'make demo-prep' first: waitingPeriod is still long"
         );
         require(
-            c.cm.livenessWindow() <= 1 hours, "Jalankan 'make demo-prep' dulu: livenessWindow masih panjang"
+            c.cm.livenessWindow() <= 1 hours, "Run 'make demo-prep' first: livenessWindow is still long"
         );
         require(
             c.vault.balanceOfVault() >= DECLARED_VALUE,
-            "Modal vault kurang dari nilai klaim -- payout akan sebagian, demo tidak meyakinkan"
+            "Vault capital is below the claim value -- payout would be partial, demo unconvincing"
         );
         require(
             c.usdt.allowance(vm.addr(vm.envUint("GATEWAY_PK")), address(c.vault)) >= DECLARED_VALUE,
-            "Gateway belum approve MockUSDT ke VAULT"
+            "Gateway has not approved MockUSDT to the VAULT"
         );
         require(
             c.usdt.allowance(c.challenger, address(c.vault)) >= c.cm.challengeBond(),
-            "Penantang belum approve MockUSDT ke VAULT (bukan ke ChallengeManager!)"
+            "Challenger has not approved MockUSDT to the VAULT (not to ChallengeManager!)"
         );
     }
 
     function _reportBalances(Ctx memory c) internal view {
-        console.log("--- saldo (USDT) ---");
-        console.log("kreator  :", c.usdt.balanceOf(c.creator) / 1e6);
-        console.log("pembeli  :", c.usdt.balanceOf(c.buyer) / 1e6);
-        console.log("penantang:", c.usdt.balanceOf(c.challenger) / 1e6);
+        console.log("--- balances (USDT) ---");
+        console.log("creator   :", c.usdt.balanceOf(c.creator) / 1e6);
+        console.log("buyer     :", c.usdt.balanceOf(c.buyer) / 1e6);
+        console.log("challenger:", c.usdt.balanceOf(c.challenger) / 1e6);
     }
 }

@@ -8,7 +8,7 @@
 -include ../.env
 export
 
-.PHONY: help build test test-gas fmt clean deploy-mockusdt deploy verify-env verify-deploy-env verify-demo-env demo-prep demo demo-challenge demo-resolve verify verify-status
+.PHONY: help build test test-gas fmt clean deploy-mockusdt deploy verify-env verify-deploy-env verify-demo-env demo-prep demo demo-challenge demo-resolve demo-all verify verify-status
 
 help:
 	@echo "make build            — compile"
@@ -22,6 +22,7 @@ help:
 	@echo "make demo             — babak 1-2: mint + jual (lalu tunggu coverage aktif)"
 	@echo "make demo-challenge   — babak 3: CERT_ID=.. (G2: coverage harus sudah aktif)"
 	@echo "make demo-resolve     — babak 4-5: CHALLENGE_ID=.. CERT_ID=.."
+	@echo "make demo-all         — SMOKE TEST: babak 1-5 sekali jalan (tunggu otomatis)"
 	@echo "make demo-links       — tautan explorer tiap tx demo (untuk juri)"
 	@echo "make export-abi       — ekspor ABI ke packages/contracts-abi (untuk Person A)"
 	@echo "make verify           — verifikasi susulan: ADDR=0x... NAME=src/X.sol:X"
@@ -100,28 +101,35 @@ verify-demo-env:
 	@test -n "$(DEMO_CREATOR_PK)"      || (echo "❌ DEMO_CREATOR_PK kosong"; exit 1)
 	@test -n "$(DEMO_CHALLENGER_PK)"   || (echo "❌ DEMO_CHALLENGER_PK kosong"; exit 1)
 	@test -n "$(RESOLVER_PK)"          || (echo "❌ RESOLVER_PK kosong"; exit 1)
-	@echo "✅ env demo lengkap"
+	@echo "✅ demo env complete"
 
 demo-prep: verify-env
 	forge script script/PrepareDemo.s.sol:PrepareDemo --rpc-url $(RPC_URL) --broadcast -vvv
 
+# Fase demo tanpa -vvv dan tanpa echo perintah: output ini yang direkam
+# untuk publik — trace VM::env* dan estimasi gas hanya noise di layar.
 demo: verify-demo-env
-	forge script script/DemoFlow.s.sol:DemoFlow --rpc-url $(RPC_URL) --broadcast -vvv
+	@forge script script/DemoFlow.s.sol:DemoFlow --rpc-url $(RPC_URL) --broadcast
 
 # Babak 3 terpisah (G2): gugatan baru sah setelah coverage aktif — kelayakan
 # klaim dinilai pada momen gugatan dibuka, bukan saat resolve.
 demo-challenge: verify-demo-env
 	@test -n "$(CERT_ID)" || (echo "❌ pakai: make demo-challenge CERT_ID=1"; exit 1)
-	forge script script/DemoFlow.s.sol:DemoFlow \
+	@forge script script/DemoFlow.s.sol:DemoFlow \
 		--sig "challengeCert(uint256)" $(CERT_ID) \
-		--rpc-url $(RPC_URL) --broadcast -vvv
+		--rpc-url $(RPC_URL) --broadcast
 
 demo-resolve: verify-demo-env
 	@test -n "$(CHALLENGE_ID)" || (echo "❌ pakai: make demo-resolve CHALLENGE_ID=1 CERT_ID=1"; exit 1)
 	@test -n "$(CERT_ID)"      || (echo "❌ pakai: make demo-resolve CHALLENGE_ID=1 CERT_ID=1"; exit 1)
-	forge script script/DemoFlow.s.sol:DemoFlow \
+	@forge script script/DemoFlow.s.sol:DemoFlow \
 		--sig "resolve(uint256,uint256)" $(CHALLENGE_ID) $(CERT_ID) \
-		--rpc-url $(RPC_URL) --broadcast -vvv
+		--rpc-url $(RPC_URL) --broadcast
+
+# Smoke test satu perintah: babak 1-5 + demo-links, sleep otomatis di antara
+# fase (durasi dibaca dari chain). Untuk rekaman tetap pakai fase terpisah.
+demo-all: verify-demo-env
+	@bash script/demo-all.sh
 
 # Tautan verifikasi untuk juri: tiap transaksi demo -> URL explorer.
 demo-links:

@@ -17,14 +17,17 @@ CHAIN_ID = "1952"
 EXPLORER = "https://www.okx.com/web3/explorer/xlayer-test"
 
 # Nama fungsi -> babak dalam cerita demo, dalam urutan Golden Path.
-BABAK = {
-    "registerAndMint": "1. Sertifikat diterbitkan untuk kreator",
-    "transferFrom": "2. Kreator MENJUAL ke pembeli (jaminan ikut pindah)",
-    "challenge": "3. Penantang menggugat dengan bukti",
-    "resolve": "4. Resolver memutus -> PAYOUT KE PEMBELI",
-    "setWaitingPeriod": "prep: masa tunggu dipercepat (tercatat publik)",
-    "setLivenessWindow": "prep: jendela liveness dipercepat (tercatat publik)",
-    "fund": "prep: modal awal disetor ke vault",
+# Label bahasa Inggris: output ini ditempel untuk juri internasional.
+ACTS = {
+    "registerAndMint": "1. Certificate issued to the creator",
+    "transferFrom": "2. Creator SELLS to a buyer (the guarantee moves with it)",
+    "challenge": "3. Challenger disputes with evidence",
+    "resolve": "4. Resolver rules -> PAYOUT TO THE BUYER",
+    "setWaitingPeriod": "prep: waiting period compressed (publicly recorded)",
+    "setLivenessWindow": "prep: liveness window compressed (publicly recorded)",
+    "fund": "prep: seed capital deposited into the vault",
+    "mint": "prep: test USDT minted to a demo actor",
+    "approve": "prep: vault funding approved",
 }
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -51,7 +54,7 @@ def collect():
                     {
                         "name": name,
                         "hash": tx.get("hash"),
-                        "label": BABAK.get(name, name),
+                        "label": ACTS.get(name, name),
                         "ts": data.get("timestamp", 0),
                     }
                 )
@@ -61,7 +64,7 @@ def collect():
 def main():
     rows = [r for r in collect() if r["hash"]]
     if not rows:
-        print("Belum ada hasil broadcast demo. Jalankan 'make demo' dulu.")
+        print("No demo broadcast results yet. Run 'make demo' first.")
         return 0
 
     rows.sort(key=lambda r: r["ts"])
@@ -72,18 +75,31 @@ def main():
             unik.append(r)
     rows = unik
 
+    # Golden Path dulu (label berawalan angka babak), prep belakangan:
+    # penonton harus melihat ceritanya sebelum setup-nya.
+    story = [r for r in rows if r["label"][:1].isdigit()]
+    prep = [r for r in rows if not r["label"][:1].isdigit()]
+
     print()
     print("=" * 66)
-    print("  TAUTAN VERIFIKASI — buka satu per satu saat merekam")
+    print("  VERIFICATION LINKS — every step is a public transaction")
     print("=" * 66)
-    for r in rows:
+    for r in story:
         print()
         print(f"  {r['label']}")
         print(f"  {EXPLORER}/tx/{r['hash']}")
+    if prep:
+        print()
+        print("-" * 66)
+        print("  Demo setup (also public):")
+        for r in prep:
+            print()
+            print(f"  {r['label']}")
+            print(f"  {EXPLORER}/tx/{r['hash']}")
 
     print()
     print("-" * 66)
-    print("  Kontrak (source terverifikasi di Sourcify):")
+    print("  Contracts (source verified on Sourcify):")
     env = ROOT.parent / ".env"
     if env.exists():
         wanted = ("ADDR_REGISTRY", "ADDR_CERTIFICATE", "ADDR_VAULT", "ADDR_CHALLENGE", "ADDR_MOCKUSDT")
