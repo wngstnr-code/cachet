@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+<rect width="800" height="600" fill="#FAF8F5"/>
+<circle cx="290" cy="250" r="150" fill="#1F4D3A"/>
+<circle cx="430" cy="310" r="105" fill="#C2410C" opacity="0.82"/>
+<rect x="490" y="120" width="180" height="180" fill="#2A2622" transform="rotate(12 580 210)"/>
+<path d="M120 470 Q 400 380 680 460" stroke="#2A2622" stroke-width="7" fill="none"/>
+<circle cx="620" cy="430" r="34" fill="#8A6D1F"/>
+<text x="120" y="530" font-family="Georgia,serif" font-size="26" fill="#2A2622">Composition No. 6</text>
+<text x="120" y="558" font-family="monospace" font-size="14" fill="#8A8378">CACHET DEMO ASSET - PREVIEW STORED ENTIRELY ON-CHAIN</text>
+</svg>

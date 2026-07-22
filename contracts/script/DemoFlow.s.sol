@@ -35,6 +35,19 @@ contract DemoFlow is Script {
     uint256 internal constant DECLARED_VALUE = 50e6; // 50 USDT
     uint256 internal constant FRAUD_BOND = 5e6;
 
+    /// @dev tokenURI = data URI berisi metadata + gambar SVG, SELURUHNYA
+    ///      on-chain: cert page menampilkan preview tanpa server/IPFS —
+    ///      memperkuat klaim "verifiable from chain alone". (~1.6 KB, murah
+    ///      di testnet.) Sumber: script/demo-asset.svg. Regenerasi:
+    ///      IMG="data:image/svg+xml;base64,$(base64 -i demo-asset.svg)"
+    ///      lalu bungkus JSON {name,description,image} -> base64 lagi.
+    string internal constant TOKEN_URI =
+        "data:application/json;base64,eyJuYW1lIjoiQ29tcG9zaXRpb24gTm8uIDYgLSBDYWNoZXQgRGVtbyBBc3NldCIsImRlc2NyaXB0aW9uIjoiRGVtbyBhc3NldCBtaW50ZWQgYnkgRGVtb0Zsb3cgb24gWCBMYXllciBUZXN0bmV0LiBUaGlzIHByZXZpZXcgaXMgc3RvcmVkIGVudGlyZWx5IG9uLWNoYWluIGluc2lkZSB0b2tlblVSSSAtIG5vIHNlcnZlciwgbm8gSVBGUy4iLCJpbWFnZSI6ImRhdGE6aW1hZ2Uvc3ZnK3htbDtiYXNlNjQsUEhOMlp5QjRiV3h1Y3owaWFIUjBjRG92TDNkM2R5NTNNeTV2Y21jdk1qQXdNQzl6ZG1jaUlIWnBaWGRDYjNnOUlqQWdNQ0E0TURBZ05qQXdJajRLUEhKbFkzUWdkMmxrZEdnOUlqZ3dNQ0lnYUdWcFoyaDBQU0kyTURBaUlHWnBiR3c5SWlOR1FVWTRSalVpTHo0S1BHTnBjbU5zWlNCamVEMGlNamt3SWlCamVUMGlNalV3SWlCeVBTSXhOVEFpSUdacGJHdzlJaU14UmpSRU0wRWlMejRLUEdOcGNtTnNaU0JqZUQwaU5ETXdJaUJqZVQwaU16RXdJaUJ5UFNJeE1EVWlJR1pwYkd3OUlpTkRNalF4TUVNaUlHOXdZV05wZEhrOUlqQXVPRElpTHo0S1BISmxZM1FnZUQwaU5Ea3dJaUI1UFNJeE1qQWlJSGRwWkhSb1BTSXhPREFpSUdobGFXZG9kRDBpTVRnd0lpQm1hV3hzUFNJak1rRXlOakl5SWlCMGNtRnVjMlp2Y20wOUluSnZkR0YwWlNneE1pQTFPREFnTWpFd0tTSXZQZ284Y0dGMGFDQmtQU0pOTVRJd0lEUTNNQ0JSSURRd01DQXpPREFnTmpnd0lEUTJNQ0lnYzNSeWIydGxQU0lqTWtFeU5qSXlJaUJ6ZEhKdmEyVXRkMmxrZEdnOUlqY2lJR1pwYkd3OUltNXZibVVpTHo0S1BHTnBjbU5zWlNCamVEMGlOakl3SWlCamVUMGlORE13SWlCeVBTSXpOQ0lnWm1sc2JEMGlJemhCTmtReFJpSXZQZ284ZEdWNGRDQjRQU0l4TWpBaUlIazlJalV6TUNJZ1ptOXVkQzFtWVcxcGJIazlJa2RsYjNKbmFXRXNjMlZ5YVdZaUlHWnZiblF0YzJsNlpUMGlNallpSUdacGJHdzlJaU15UVRJMk1qSWlQa052YlhCdmMybDBhVzl1SUU1dkxpQTJQQzkwWlhoMFBnbzhkR1Y0ZENCNFBTSXhNakFpSUhrOUlqVTFPQ0lnWm05dWRDMW1ZVzFwYkhrOUltMXZibTl6Y0dGalpTSWdabTl1ZEMxemFYcGxQU0l4TkNJZ1ptbHNiRDBpSXpoQk9ETTNPQ0krUTBGRFNFVlVJRVJGVFU4Z1FWTlRSVlFnTFNCUVVrVldTVVZYSUZOVVQxSkZSQ0JGVGxSSlVrVk1XU0JQVGkxRFNFRkpUand2ZEdWNGRENEtQQzl6ZG1jK0NnPT0ifQ==";
+
+    /// @dev assetURI registry menunjuk langsung ke gambar SVG yang sama.
+    string internal constant ASSET_URI =
+        "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA4MDAgNjAwIj4KPHJlY3Qgd2lkdGg9IjgwMCIgaGVpZ2h0PSI2MDAiIGZpbGw9IiNGQUY4RjUiLz4KPGNpcmNsZSBjeD0iMjkwIiBjeT0iMjUwIiByPSIxNTAiIGZpbGw9IiMxRjREM0EiLz4KPGNpcmNsZSBjeD0iNDMwIiBjeT0iMzEwIiByPSIxMDUiIGZpbGw9IiNDMjQxMEMiIG9wYWNpdHk9IjAuODIiLz4KPHJlY3QgeD0iNDkwIiB5PSIxMjAiIHdpZHRoPSIxODAiIGhlaWdodD0iMTgwIiBmaWxsPSIjMkEyNjIyIiB0cmFuc2Zvcm09InJvdGF0ZSgxMiA1ODAgMjEwKSIvPgo8cGF0aCBkPSJNMTIwIDQ3MCBRIDQwMCAzODAgNjgwIDQ2MCIgc3Ryb2tlPSIjMkEyNjIyIiBzdHJva2Utd2lkdGg9IjciIGZpbGw9Im5vbmUiLz4KPGNpcmNsZSBjeD0iNjIwIiBjeT0iNDMwIiByPSIzNCIgZmlsbD0iIzhBNkQxRiIvPgo8dGV4dCB4PSIxMjAiIHk9IjUzMCIgZm9udC1mYW1pbHk9Ikdlb3JnaWEsc2VyaWYiIGZvbnQtc2l6ZT0iMjYiIGZpbGw9IiMyQTI2MjIiPkNvbXBvc2l0aW9uIE5vLiA2PC90ZXh0Pgo8dGV4dCB4PSIxMjAiIHk9IjU1OCIgZm9udC1mYW1pbHk9Im1vbm9zcGFjZSIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzhBODM3OCI+Q0FDSEVUIERFTU8gQVNTRVQgLSBQUkVWSUVXIFNUT1JFRCBFTlRJUkVMWSBPTi1DSEFJTjwvdGV4dD4KPC9zdmc+Cg==";
+
     /// @dev Digabung jadi struct: tanpa ini `run()` menabrak batas stack EVM.
     struct Ctx {
         MockUSDT usdt;
@@ -80,8 +93,8 @@ contract DemoFlow is Script {
                     ],
                     embCommit: keccak256(abi.encodePacked(seed, "emb")),
                     revealedCommit: bytes32(0),
-                    assetURI: "ipfs://demo-asset",
-                    tokenURI_: "ipfs://demo-metadata",
+                    assetURI: ASSET_URI,
+                    tokenURI_: TOKEN_URI,
                     declaredValue: DECLARED_VALUE,
                     fraudBond: FRAUD_BOND,
                     premium: premium,
