@@ -72,11 +72,31 @@ cast call $ADDR_CHALLENGE \
 # -> certId, challenger, openedAt, status (1=Open), evidenceURI
 ```
 
+> **Catatan (perilaku gateway saat ini):** gugatan yang dibuka lewat endpoint
+> `/v1/challenge` tercatat dengan **address gateway** sebagai `challenger`,
+> bukan pihak yang menyerahkan bukti — refund/bounty bond mengalir ke address
+> itu. Sebelum memutus, sadari siapa penantang sebenarnya dari `evidenceURI`.
+
+Cek jendela liveness sudah lewat (kontrak tetap menolak kalau belum):
+
+```bash
+cast call $ADDR_CHALLENGE 'livenessWindow()(uint64)' --rpc-url $RPC_URL
+# resolve baru sah setelah openedAt + livenessWindow
+```
+
 Periksa sertifikat yang digugat:
 
 ```bash
 cast call $ADDR_CERTIFICATE 'certData(uint256)' <CERT_ID> --rpc-url $RPC_URL
 cast call $ADDR_CERTIFICATE 'ownerOf(uint256)(address)' <CERT_ID> --rpc-url $RPC_URL
+```
+
+Versi terformat (status coverage, umur, survived) tanpa parsing hex — endpoint
+baca gratis di gateway, atau cert page:
+
+```bash
+curl -s https://api.cachetprotocol.xyz/v1/cert/<CERT_ID> | python3 -m json.tool
+# atau buka: https://cachet-six.vercel.app/cert/<CERT_ID>
 ```
 
 Periksa entri registry (di sinilah `registeredAt` dan `commitAt`):

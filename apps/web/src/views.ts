@@ -98,7 +98,7 @@ function statusRow(c: CertView, status: CertStatus): string {
       break;
     case "REVOKED": {
       word = "Revoked";
-      aside = "lost a challenge; claim paid to holder at resolution";
+      aside = "upheld challenge; coverage, when in force, is paid to the holder at resolution";
       const lost = c.challenges.find((ch) => ch.status === ChallengeStatus.UpheldChallengerWon);
       if (lost?.resolvedTx) {
         link = ` <a class="ext" href="${explorerTx(lost.resolvedTx)}" target="_blank" rel="noopener">view ruling</a>`;
@@ -191,11 +191,12 @@ export function certView(c: CertView, imageURL: string | null): string {
           <div><span class="label">Creator</span>
             <div class="value">${shortAddr(c.creator)}
               <button class="copy-btn" data-copy="${c.creator}">copy</button>
-              <a class="ext" href="${explorerAddress(c.creator)}" target="_blank" rel="noopener"></a>
+              <a class="ext" href="${explorerAddress(c.creator)}" target="_blank" rel="noopener">explorer</a>
             </div></div>
           <div><span class="label">Current holder</span>
             <div class="value">${shortAddr(c.holder)}
               <button class="copy-btn" data-copy="${c.holder}">copy</button>
+              <a class="ext" href="${explorerAddress(c.holder)}" target="_blank" rel="noopener">explorer</a>
               <span class="aside">coverage follows this holder</span>
             </div></div>
           <div><span class="label">Registry fingerprint</span>
