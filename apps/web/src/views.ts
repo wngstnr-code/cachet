@@ -19,7 +19,7 @@ function shell(inner: string, title = ""): string {
   return `
     <div class="page">
       <header class="masthead">
-        <a class="brand" href="/">Cachet</a>
+        <a class="brand" href="/"><img class="brand-logo" src="/cachet-logo.svg" alt="" />Cachet</a>
         ${title ? `<span class="sep">/</span><h1>${title}</h1>` : ""}
         <span class="net">${esc(addresses.chain.name)} · chain ${addresses.chain.chainId}</span>
       </header>
@@ -32,7 +32,7 @@ export function homeView(): string {
   return `
     <div class="home">
       <div class="lookup">
-        <div class="brand">Cachet</div>
+        <div class="brand"><img class="brand-logo brand-logo-lg" src="/cachet-logo.svg" alt="" />Cachet</div>
         <p>Public registry of first-seen certificates on ${esc(addresses.chain.name)}.
            Every certificate on this site is verifiable on-chain. You do not need to trust Cachet.</p>
         <form id="lookup-form">
