@@ -218,16 +218,24 @@ smoke_internal() {
 
 smoke_public() {
   require_command curl
-  curl --fail --silent --show-error "${PUBLIC_URL}/healthz" >/dev/null
+  curl --fail --silent --show-error \
+    --retry 12 --retry-all-errors --retry-delay 5 \
+    "${PUBLIC_URL}/healthz" >/dev/null
 
-  local status
-  status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
-    --request POST "${PUBLIC_URL}/v1/verify" \
-    --header 'content-type: application/json' \
-    --data '{}')"
+  local attempt status="000"
+  for attempt in {1..12}; do
+    status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+      --request POST "${PUBLIC_URL}/v1/verify" \
+      --header 'content-type: application/json' \
+      --data '{}' || true)"
+    [[ "${status}" == "402" ]] && break
+    sleep 5
+  done
   [[ "${status}" == "402" ]] || die "unpaid public verify returned ${status}, expected 402"
 
-  curl --fail --silent --show-error "${PUBLIC_URL}/v1/cert/6" >/dev/null
+  curl --fail --silent --show-error \
+    --retry 12 --retry-all-errors --retry-delay 5 \
+    "${PUBLIC_URL}/v1/cert/6" >/dev/null
   log "public HTTPS, x402 rejection, and certificate smoke checks passed"
 }
 

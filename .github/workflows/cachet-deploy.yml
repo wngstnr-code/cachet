@@ -1,0 +1,135 @@
+name: cachet-deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_sha:
+        description: "Published 40-character main commit SHA (blank = selected main ref)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cachet-ovh-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy engine + gateway to OVH
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: ovh-production
+      url: https://api.cachetprotocol.xyz/healthz
+    env:
+      DEPLOY_SHA_REQUEST: ${{ inputs.image_sha || github.sha }}
+      OVH_HOST: ${{ vars.OVH_HOST }}
+      OVH_USER: ${{ vars.OVH_USER }}
+      OVH_SSH_HOST_KEY: ${{ vars.OVH_SSH_HOST_KEY }}
+      GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+      OVH_SSH_PRIVATE_KEY: ${{ secrets.OVH_SSH_PRIVATE_KEY }}
+    steps:
+      - name: Checkout selected ref
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - name: Resolve and authorize image SHA
+        id: release
+        run: |
+          sha="${DEPLOY_SHA_REQUEST}"
+          [[ "${sha}" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::image_sha must be 40 lowercase hexadecimal characters"
+            exit 1
+          }
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "${sha}" origin/main || {
+            echo "::error::requested SHA is not contained in origin/main"
+            exit 1
+          }
+          echo "sha=${sha}" >>"${GITHUB_OUTPUT}"
+      - name: Validate protected environment configuration
+        run: |
+          test -n "${OVH_HOST}" || { echo "::error::OVH_HOST is missing"; exit 1; }
+          test -n "${OVH_USER}" || { echo "::error::OVH_USER is missing"; exit 1; }
+          test -n "${OVH_SSH_HOST_KEY}" || { echo "::error::OVH_SSH_HOST_KEY is missing"; exit 1; }
+          test -n "${OVH_SSH_PRIVATE_KEY}" || { echo "::error::OVH_SSH_PRIVATE_KEY is missing"; exit 1; }
+          test -n "${GHCR_READ_TOKEN}" || { echo "::error::GHCR_READ_TOKEN is missing"; exit 1; }
+      - name: Set up pinned SSH identity
+        run: |
+          install -d -m 0700 "${HOME}/.ssh"
+          printf '%s\n' "${OVH_SSH_HOST_KEY}" >"${HOME}/.ssh/known_hosts"
+          printf '%s\n' "${OVH_SSH_PRIVATE_KEY}" >"${HOME}/.ssh/cachet_ovh"
+          chmod 0600 "${HOME}/.ssh/known_hosts" "${HOME}/.ssh/cachet_ovh"
+          ssh-keygen -y -f "${HOME}/.ssh/cachet_ovh" >/dev/null
+      - name: Confirm private image manifests
+        env:
+          DEPLOY_SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          printf '%s' "${GHCR_READ_TOKEN}" \
+            | docker login ghcr.io --username scientivan --password-stdin
+          docker buildx imagetools inspect \
+            "ghcr.io/scientivan/cachet-engine:sha-${DEPLOY_SHA}" >/dev/null
+          docker buildx imagetools inspect \
+            "ghcr.io/scientivan/cachet-gateway:sha-${DEPLOY_SHA}" >/dev/null
+      - name: Check both public applications before deploy
+        run: |
+          curl --fail --silent --show-error --retry 5 --retry-all-errors \
+            https://simpleartch.com/api/health >/dev/null
+          curl --fail --silent --show-error --retry 5 --retry-all-errors \
+            https://api.cachetprotocol.xyz/healthz >/dev/null
+      - name: Upload reviewed deployment bundle
+        env:
+          REMOTE_DIR: /tmp/cachet-ci-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          ssh -o IdentitiesOnly=yes -i "${HOME}/.ssh/cachet_ovh" "${OVH_USER}@${OVH_HOST}" \
+            "install -d -m 0700 '${REMOTE_DIR}'"
+          scp -o IdentitiesOnly=yes -i "${HOME}/.ssh/cachet_ovh" \
+            scripts/deploy/compose.ovh.yml \
+            scripts/deploy/cachetctl.sh \
+            scripts/deploy/ci-deploy.sh \
+            "${OVH_USER}@${OVH_HOST}:${REMOTE_DIR}/"
+      - name: Log in to GHCR transiently on VPS
+        env:
+          REMOTE_DOCKER_CONFIG: /run/cachet-docker-auth-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          ssh -o IdentitiesOnly=yes -i "${HOME}/.ssh/cachet_ovh" "${OVH_USER}@${OVH_HOST}" \
+            "sudo install -d -o root -g root -m 0700 '${REMOTE_DOCKER_CONFIG}'"
+          printf '%s' "${GHCR_READ_TOKEN}" \
+            | ssh -o IdentitiesOnly=yes -i "${HOME}/.ssh/cachet_ovh" "${OVH_USER}@${OVH_HOST}" \
+              "sudo env DOCKER_CONFIG='${REMOTE_DOCKER_CONFIG}' docker login ghcr.io --username scientivan --password-stdin"
+      - name: Deploy and smoke test
+        env:
+          DEPLOY_SHA: ${{ steps.release.outputs.sha }}
+          REMOTE_DIR: /tmp/cachet-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          REMOTE_DOCKER_CONFIG: /run/cachet-docker-auth-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          ssh -o IdentitiesOnly=yes -i "${HOME}/.ssh/cachet_ovh" "${OVH_USER}@${OVH_HOST}" \
+            "sudo env CACHET_CI_DOCKER_CONFIG='${REMOTE_DOCKER_CONFIG}' bash '${REMOTE_DIR}/ci-deploy.sh' '${DEPLOY_SHA}'"
+      - name: Verify production externally
+        run: |
+          curl --fail --silent --show-error --retry 12 --retry-all-errors --retry-delay 5 \
+            https://api.cachetprotocol.xyz/healthz >/dev/null
+          status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            --request POST https://api.cachetprotocol.xyz/v1/verify \
+            --header 'content-type: application/json' --data '{}')"
+          [[ "${status}" == "402" ]]
+          curl --fail --silent --show-error --retry 12 --retry-all-errors --retry-delay 5 \
+            https://api.cachetprotocol.xyz/v1/cert/6 >/dev/null
+          curl --fail --silent --show-error --retry 5 --retry-all-errors \
+            https://cachet-six.vercel.app/cert/6 >/dev/null
+          curl --fail --silent --show-error --retry 5 --retry-all-errors \
+            https://simpleartch.com/api/health >/dev/null
+      - name: Remove transient credentials and files
+        if: ${{ always() }}
+        env:
+          REMOTE_DIR: /tmp/cachet-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          REMOTE_DOCKER_CONFIG: /run/cachet-docker-auth-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          if [[ -f "${HOME}/.ssh/cachet_ovh" && -n "${OVH_USER}" && -n "${OVH_HOST}" ]]; then
+            ssh -o IdentitiesOnly=yes -i "${HOME}/.ssh/cachet_ovh" "${OVH_USER}@${OVH_HOST}" \
+              "sudo find '${REMOTE_DIR}' -xdev -mindepth 1 -delete 2>/dev/null || true; sudo rmdir '${REMOTE_DIR}' 2>/dev/null || true; sudo find '${REMOTE_DOCKER_CONFIG}' -xdev -mindepth 1 -delete 2>/dev/null || true; sudo rmdir '${REMOTE_DOCKER_CONFIG}' 2>/dev/null || true"
+          fi
+          rm -f -- "${HOME}/.ssh/cachet_ovh"

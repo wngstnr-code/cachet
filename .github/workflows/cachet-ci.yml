@@ -1,0 +1,112 @@
+name: cachet-ci
+
+on:
+  pull_request:
+    paths:
+      - "services/engine/**"
+      - "apps/server/**"
+      - "packages/contracts-abi/**"
+      - "tsconfig.base.json"
+      - "scripts/deploy/**"
+      - ".github/workflows/cachet-*.yml"
+  push:
+    branches: [main]
+    paths:
+      - "services/engine/**"
+      - "apps/server/**"
+      - "packages/contracts-abi/**"
+      - "tsconfig.base.json"
+      - "scripts/deploy/**"
+      - ".github/workflows/cachet-*.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cachet-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engine:
+    name: engine tests (Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: services/engine
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/engine/requirements.txt
+      - name: Install dependencies
+        run: python -m pip install --requirement requirements.txt
+      - name: Run tests
+        run: python -m pytest
+
+  gateway:
+    name: gateway typecheck + tests (Node 22)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/server
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@10.18.3 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Run tests
+        run: pnpm test
+
+  deployment-config:
+    name: deployment shell + Compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Validate shell syntax
+        run: bash -n scripts/deploy/*.sh
+      - name: Test CI deploy primitives
+        run: bash scripts/deploy/test-ci-deploy.sh
+      - name: Render production Compose
+        env:
+          CACHET_RUNTIME_ENV: ${{ github.workspace }}/scripts/deploy/ovh.runtime.env.example
+        run: >-
+          docker compose
+          --env-file scripts/deploy/ovh.deploy.env.example
+          --file scripts/deploy/compose.ovh.yml
+          config --quiet
+      - name: Reject invalid image publish mode
+        run: |
+          if PUBLISH_IMAGES=invalid scripts/deploy/build-ovh-images.sh; then
+            echo "::error::build script accepted an invalid PUBLISH_IMAGES value"
+            exit 1
+          fi
+
+  container-build:
+    name: production image build (no push)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Build and load immutable images locally
+        env:
+          PUBLISH_IMAGES: "0"
+        run: scripts/deploy/build-ovh-images.sh
