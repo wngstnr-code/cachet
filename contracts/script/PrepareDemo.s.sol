@@ -79,18 +79,18 @@ contract PrepareDemo is Script {
         vm.stopBroadcast();
 
         console.log("");
-        console.log("=== PERSIAPAN DEMO SELESAI ===");
-        console.log("waitingPeriod  :", cert.waitingPeriod(), "detik");
-        console.log("livenessWindow :", cm.livenessWindow(), "detik");
-        console.log("saldo vault    :", vault.balanceOfVault() / 1e6, "USDT");
+        console.log("=== DEMO PREP DONE ===");
+        console.log("waitingPeriod  :", cert.waitingPeriod(), "seconds");
+        console.log("livenessWindow :", cm.livenessWindow(), "seconds");
+        console.log("vault balance  :", vault.balanceOfVault() / 1e6, "USDT");
         console.log("");
-        console.log("MASIH PERLU DILAKUKAN MANUAL (butuh kunci masing-masing):");
-        console.log("1. gateway approve MockUSDT ke vault:");
+        console.log("STILL NEEDED MANUALLY (each requires its own key):");
+        console.log("1. gateway approves MockUSDT to the vault:");
         console.log("   cast send", address(usdt));
         console.log("     'approve(address,uint256)'", address(vault));
-        console.log("     <jumlah besar> --private-key $GATEWAY_PK");
-        console.log("2. penantang approve MockUSDT ke vault (bukan ke ChallengeManager!)");
+        console.log("     <large amount> --private-key $GATEWAY_PK");
+        console.log("2. challenger approves MockUSDT to the vault (not to ChallengeManager!)");
         console.log("");
-        console.log("Lalu jalankan: make demo");
+        console.log("Then run: make demo");
     }
 }
