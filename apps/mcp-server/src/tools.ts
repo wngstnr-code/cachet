@@ -29,9 +29,9 @@ function present(r: GatewayResult): ToolResult {
   }
   const payload: Record<string, unknown> = { status: r.status, response: r.body };
   if (r.status === 402) {
-    // Klien pemanggil harus membayar via x402 lalu retry (lihat okx-agent-payments-protocol).
+    // Klien pemanggil membayar lalu retry dengan PAYMENT-SIGNATURE (x402 v2).
     payload.payment_required_header = r.paymentRequired;
-    payload.hint = "Bayar via x402 (header X-PAYMENT) lalu panggil ulang tool ini.";
+    payload.hint = "Bayar via x402 v2 lalu retry dengan header PAYMENT-SIGNATURE.";
   }
   return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }], isError: true };
 }

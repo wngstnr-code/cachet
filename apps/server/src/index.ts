@@ -1,6 +1,4 @@
-/**
- * Entry point gateway. x402 & MCP menyusul di PR-4; PR-3 = REST core + stub chain.
- */
+/** Entry point gateway REST + chain client + payment gate OKX x402 v2. */
 
 import { buildApp } from "./app.js";
 import { buildDeps, loadConfig } from "./config.js";

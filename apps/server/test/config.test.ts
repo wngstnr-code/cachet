@@ -1,0 +1,67 @@
+import { describe, expect, it } from "vitest";
+
+import { loadX402Options } from "../src/config.js";
+
+const PAY_TO = "0x1111111111111111111111111111111111111111" as const;
+const completeEnv: NodeJS.ProcessEnv = {
+  X402_BYPASS: "0",
+  X402_NETWORK: "eip155:1952",
+  X402_PAY_TO: PAY_TO,
+  X402_RESOURCE_BASE: "https://api.cachet.test",
+  OKX_BASE_URL: "https://web3.okx.com",
+  OKX_API_KEY: "test-api-key",
+  OKX_SECRET_KEY: "test-secret-key",
+  OKX_PASSPHRASE: "test-passphrase",
+};
+
+describe("x402 runtime config", () => {
+  it("menerima config testnet lengkap", () => {
+    const options = loadX402Options(completeEnv, { chainId: 1952, payTo: PAY_TO });
+    expect(options.bypass).toBe(false);
+    expect(options.network).toBe("eip155:1952");
+    expect(options.resourceBase).toBe("https://api.cachet.test");
+    expect(options.facilitator).toBeDefined();
+  });
+
+  it("bypass lokal tidak memerlukan credential atau HTTPS", () => {
+    const options = loadX402Options({ X402_BYPASS: "1" }, { chainId: 1952, payTo: PAY_TO });
+    expect(options.bypass).toBe(true);
+    expect(options.facilitator).toBeUndefined();
+  });
+
+  it.each(["OKX_API_KEY", "OKX_SECRET_KEY", "OKX_PASSPHRASE"])(
+    "menolak credential parsial tanpa %s",
+    (missing) => {
+      const env = { ...completeEnv };
+      delete env[missing];
+      expect(() => loadX402Options(env, { chainId: 1952, payTo: PAY_TO })).toThrow(/wajib diisi bersama/);
+    },
+  );
+
+  it("menolak network selain X Layer Testnet", () => {
+    expect(() =>
+      loadX402Options({ ...completeEnv, X402_NETWORK: "eip155:196" }, { chainId: 1952, payTo: PAY_TO }),
+    ).toThrow(/eip155:1952/);
+  });
+
+  it("menolak payTo bukan alamat EVM", () => {
+    expect(() =>
+      loadX402Options({ ...completeEnv, X402_PAY_TO: "not-an-address" }, { chainId: 1952, payTo: PAY_TO }),
+    ).toThrow(/alamat EVM/);
+  });
+
+  it("menolak public resource dan Broker URL non-HTTPS", () => {
+    expect(() =>
+      loadX402Options({ ...completeEnv, X402_RESOURCE_BASE: "http://api.cachet.test" }, { chainId: 1952, payTo: PAY_TO }),
+    ).toThrow(/X402_RESOURCE_BASE wajib memakai HTTPS/);
+    expect(() =>
+      loadX402Options({ ...completeEnv, OKX_BASE_URL: "http://web3.okx.com" }, { chainId: 1952, payTo: PAY_TO }),
+    ).toThrow(/OKX_BASE_URL wajib memakai HTTPS/);
+  });
+
+  it("menolak HTTPS Broker selain host resmi OKX", () => {
+    expect(() =>
+      loadX402Options({ ...completeEnv, OKX_BASE_URL: "https://example.com" }, { chainId: 1952, payTo: PAY_TO }),
+    ).toThrow(/wajib https:\/\/web3\.okx\.com/);
+  });
+});

@@ -1,103 +1,206 @@
 import { describe, expect, it } from "vitest";
+import {
+  decodePaymentRequiredHeader,
+  decodePaymentResponseHeader,
+  encodePaymentSignatureHeader,
+} from "@okxweb3/x402-core/http";
+import type { FacilitatorClient } from "@okxweb3/x402-core/server";
+import {
+  FacilitatorResponseError,
+  type PaymentPayload,
+  type PaymentRequired,
+  type PaymentRequirements,
+  type SettleResponse,
+  type SupportedResponse,
+  type VerifyResponse,
+} from "@okxweb3/x402-core/types";
 
-import type { Facilitator, SettleResult } from "../src/x402/guard.js";
-import type { PaymentRequirements } from "../src/x402/requirements.js";
+import { PRICES } from "../src/x402/prices.js";
+import { buildPaymentRoutes } from "../src/x402/routes.js";
 import { imgPayload, makeApp } from "./helpers.js";
 
-function decodePaymentRequired(header: string): Record<string, any> {
-  return JSON.parse(Buffer.from(header, "base64").toString("utf8"));
+const TX_HASH = `0x${"ab".repeat(32)}`;
+
+class FakeFacilitator implements FacilitatorClient {
+  verifyCount = 0;
+  settleCount = 0;
+
+  constructor(private mode: "accept" | "reject" | "verify-error" = "accept") {}
+
+  async getSupported(): Promise<SupportedResponse> {
+    return {
+      kinds: [{ x402Version: 2, scheme: "exact", network: "eip155:1952" }],
+      extensions: [],
+      signers: { "eip155:1952": [] },
+    };
+  }
+
+  async verify(_payload: PaymentPayload, _requirements: PaymentRequirements): Promise<VerifyResponse> {
+    this.verifyCount += 1;
+    if (this.mode === "verify-error") throw new FacilitatorResponseError("broker unavailable");
+    if (this.mode === "reject") return { isValid: false, invalidReason: "insufficient_payment" };
+    return { isValid: true, payer: "0x1111111111111111111111111111111111111111" };
+  }
+
+  async settle(_payload: PaymentPayload, requirements: PaymentRequirements): Promise<SettleResponse> {
+    this.settleCount += 1;
+    return {
+      success: true,
+      status: "success",
+      payer: "0x1111111111111111111111111111111111111111",
+      transaction: TX_HASH,
+      network: requirements.network,
+    };
+  }
 }
 
-describe("x402 payment guard", () => {
-  it("endpoint berbayar tanpa X-PAYMENT → 402 + header PAYMENT-REQUIRED", async () => {
-    const { app } = await makeApp({ verdict: "ORIGINAL", x402: { bypass: false } });
-    const res = await app.inject({ method: "POST", url: "/v1/verify", payload: imgPayload });
-    expect(res.statusCode).toBe(402);
+function decodeRequired(header: string): PaymentRequired {
+  return decodePaymentRequiredHeader(header);
+}
 
-    const header = res.headers["payment-required"] as string;
-    expect(header).toBeTruthy();
-    const decoded = decodePaymentRequired(header);
-    expect(decoded.x402Version).toBe(1);
-    const accept = decoded.accepts[0];
+function signedHeader(challenge: PaymentRequired): string {
+  return encodePaymentSignatureHeader({
+    x402Version: 2,
+    resource: challenge.resource,
+    accepted: challenge.accepts[0],
+    payload: { signature: "fake-test-signature" },
+  });
+}
+
+async function getChallenge(app: Awaited<ReturnType<typeof makeApp>>["app"], url = "/v1/verify") {
+  const response = await app.inject({ method: "POST", url, payload: imgPayload });
+  expect(response.statusCode).toBe(402);
+  const header = response.headers["payment-required"] as string;
+  expect(header).toBeTruthy();
+  return { response, challenge: decodeRequired(header) };
+}
+
+describe("x402 v2 payment guard", () => {
+  it("membangun empat route SDK dengan harga yang disepakati", () => {
+    const routes = buildPaymentRoutes({
+      network: "eip155:1952",
+      payTo: "0x1111111111111111111111111111111111111111",
+      resourceBase: "https://api.cachet.test",
+    }) as Record<string, any>;
+
+    expect(PRICES).toEqual({
+      "POST /v1/verify": "$0.02",
+      "POST /v1/commit": "$0.01",
+      "POST /v1/mint": "$0.50",
+      "POST /v1/watch": "$0.10",
+    });
+    expect(Object.keys(routes)).toEqual(Object.keys(PRICES));
+    expect(routes["POST /v1/verify"].resource).toBe("https://api.cachet.test/v1/verify");
+    expect(routes["GET /v1/cert/:id"]).toBeUndefined();
+    expect(routes["POST /v1/challenge"]).toBeUndefined();
+  });
+
+  it("tanpa payment → 402 + PAYMENT-REQUIRED x402 v2", async () => {
+    const facilitator = new FakeFacilitator();
+    const { app, signer } = await makeApp({ x402: { bypass: false, facilitator } });
+    const { challenge } = await getChallenge(app);
+
+    expect(challenge.x402Version).toBe(2);
+    expect(challenge.resource.url).toBe("https://api.cachet.test/v1/verify");
+    const accept = challenge.accepts[0];
     expect(accept.scheme).toBe("exact");
     expect(accept.network).toBe("eip155:1952");
-    expect(accept.amount).toBe("20000"); // verify = 0.02 USDT
-    expect(accept.maxAmountRequired).toBe("20000"); // kompat v1
-    expect(accept.payTo).toMatch(/^0x/);
+    expect(accept.asset.toLowerCase()).toBe("0x9e29b3aada05bf2d2c827af80bd28dc0b9b4fb0c");
+    expect(accept.amount).toBe("20000");
+    expect(accept.payTo.toLowerCase()).toBe(signer.address.toLowerCase());
+    expect(facilitator.verifyCount).toBe(0);
   });
 
-  it("harga benar per endpoint (§1.3)", async () => {
-    const { app } = await makeApp({ x402: { bypass: false } });
-    const price = async (url: string, payload: unknown) => {
-      const r = await app.inject({ method: "POST", url, payload: payload as object });
-      return decodePaymentRequired(r.headers["payment-required"] as string).accepts[0].amount;
-    };
-    expect(await price("/v1/verify", imgPayload)).toBe("20000");
-    expect(await price("/v1/commit", {})).toBe("10000");
-    expect(await price("/v1/mint", {})).toBe("500000");
-    expect(await price("/v1/watch", {})).toBe("100000");
-  });
+  it("credential sah → handler lalu settlement + PAYMENT-RESPONSE", async () => {
+    const facilitator = new FakeFacilitator();
+    const { app, engine } = await makeApp({ verdict: "ORIGINAL", x402: { bypass: false, facilitator } });
+    const { challenge } = await getChallenge(app);
 
-  it("get_certificate GRATIS → tak pernah 402", async () => {
-    const { app } = await makeApp({ x402: { bypass: false } });
-    const res = await app.inject({ method: "GET", url: "/v1/cert/999" });
-    // 404 (cert tak ada), BUKAN 402 — endpoint gratis lolos guard.
-    expect(res.statusCode).not.toBe(402);
-  });
-
-  it("facilitator memvalidasi → permintaan lolos ke handler", async () => {
-    const seen: string[] = [];
-    const facilitator: Facilitator = {
-      async verifyAndSettle(xPayment: string, _req: PaymentRequirements): Promise<SettleResult> {
-        seen.push(xPayment);
-        return { ok: true, responseHeader: Buffer.from(JSON.stringify({ status: "settled" })).toString("base64") };
-      },
-    };
-    const { app } = await makeApp({ verdict: "ORIGINAL", x402: { bypass: false, facilitator } });
-    const res = await app.inject({
+    const response = await app.inject({
       method: "POST",
       url: "/v1/verify",
-      headers: { "x-payment": "0xPROOF" },
+      headers: { "payment-signature": signedHeader(challenge) },
       payload: imgPayload,
     });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().verdict).toBe("ORIGINAL");
-    expect(seen).toEqual(["0xPROOF"]);
-    expect(res.headers["payment-response"]).toBeTruthy();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().verdict).toBe("ORIGINAL");
+    expect(engine.queryCount).toBe(1);
+    expect(facilitator.verifyCount).toBe(1);
+    expect(facilitator.settleCount).toBe(1);
+    const receipt = decodePaymentResponseHeader(response.headers["payment-response"] as string);
+    expect(receipt.success).toBe(true);
+    expect(receipt.transaction).toBe(TX_HASH);
   });
 
-  it("facilitator menolak → 402 lagi dengan alasan", async () => {
-    const facilitator: Facilitator = {
-      async verifyAndSettle(): Promise<SettleResult> {
-        return { ok: false, reason: "insufficient payment" };
-      },
-    };
+  it("credential ditolak → handler dan settlement tidak berjalan", async () => {
+    const facilitator = new FakeFacilitator("reject");
+    const { app, engine } = await makeApp({ x402: { bypass: false, facilitator } });
+    const { challenge } = await getChallenge(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/verify",
+      headers: { "payment-signature": signedHeader(challenge) },
+      payload: imgPayload,
+    });
+
+    expect(response.statusCode).toBe(402);
+    expect(engine.queryCount).toBe(0);
+    expect(facilitator.verifyCount).toBe(1);
+    expect(facilitator.settleCount).toBe(0);
+  });
+
+  it("Broker error → fail closed 502 dan handler tidak berjalan", async () => {
+    const facilitator = new FakeFacilitator("verify-error");
+    const { app, engine } = await makeApp({ x402: { bypass: false, facilitator } });
+    const { challenge } = await getChallenge(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/verify",
+      headers: { "payment-signature": signedHeader(challenge) },
+      payload: imgPayload,
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(engine.queryCount).toBe(0);
+    expect(facilitator.settleCount).toBe(0);
+  });
+
+  it("respons bisnis gagal → tidak di-settle", async () => {
+    const facilitator = new FakeFacilitator();
     const { app } = await makeApp({ x402: { bypass: false, facilitator } });
-    const res = await app.inject({
+    const { challenge } = await getChallenge(app);
+
+    const response = await app.inject({
       method: "POST",
       url: "/v1/verify",
-      headers: { "x-payment": "0xBAD" },
-      payload: imgPayload,
+      headers: { "payment-signature": signedHeader(challenge) },
+      payload: {},
     });
-    expect(res.statusCode).toBe(402);
-    expect(res.json().error).toMatch(/insufficient/);
+
+    expect(response.statusCode).toBeGreaterThanOrEqual(400);
+    expect(facilitator.verifyCount).toBe(1);
+    expect(facilitator.settleCount).toBe(0);
+    expect(response.headers["payment-response"]).toBeUndefined();
   });
 
-  it("X-PAYMENT ada tapi tanpa facilitator → 402 jujur (tak asal terima)", async () => {
-    const { app } = await makeApp({ x402: { bypass: false } }); // facilitator undefined
-    const res = await app.inject({
-      method: "POST",
-      url: "/v1/verify",
-      headers: { "x-payment": "0xPROOF" },
-      payload: imgPayload,
-    });
-    expect(res.statusCode).toBe(402);
-    expect(res.json().error).toMatch(/facilitator/);
+  it("endpoint gratis tetap melewati payment middleware", async () => {
+    const facilitator = new FakeFacilitator();
+    const { app } = await makeApp({ x402: { bypass: false, facilitator } });
+    const response = await app.inject({ method: "GET", url: "/v1/cert/999" });
+    expect(response.statusCode).not.toBe(402);
+    expect(facilitator.verifyCount).toBe(0);
   });
 
-  it("bypass (dev) → langsung lolos tanpa bayar", async () => {
+  it("x402 aktif tanpa facilitator → aplikasi menolak start", async () => {
+    await expect(makeApp({ x402: { bypass: false, facilitator: undefined } })).rejects.toThrow(/facilitator/);
+  });
+
+  it("bypass dev → handler berjalan tanpa payment", async () => {
     const { app } = await makeApp({ verdict: "ORIGINAL", x402: { bypass: true } });
-    const res = await app.inject({ method: "POST", url: "/v1/verify", payload: imgPayload });
-    expect(res.statusCode).toBe(200);
+    const response = await app.inject({ method: "POST", url: "/v1/verify", payload: imgPayload });
+    expect(response.statusCode).toBe(200);
   });
 });

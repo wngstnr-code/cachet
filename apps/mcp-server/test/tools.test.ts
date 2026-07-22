@@ -55,7 +55,7 @@ describe("MCP tools → forward ke gateway", () => {
       "http://gw",
       fakeFetch(
         () =>
-          new Response(JSON.stringify({ x402Version: 1, error: "payment required" }), {
+          new Response(JSON.stringify({ x402Version: 2, error: "payment required" }), {
             status: 402,
             headers: { "payment-required": "BASE64HEADER" },
           }),
@@ -66,7 +66,7 @@ describe("MCP tools → forward ke gateway", () => {
     const payload = JSON.parse(res.content[0].text);
     expect(payload.status).toBe(402);
     expect(payload.payment_required_header).toBe("BASE64HEADER");
-    expect(payload.hint).toMatch(/x402/);
+    expect(payload.hint).toMatch(/PAYMENT-SIGNATURE/);
   });
 
   it("register_and_mint meneruskan body lengkap", async () => {

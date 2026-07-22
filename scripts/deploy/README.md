@@ -157,9 +157,11 @@ sudo stat -c '%U %G %a %n' /opt/cachet/.env /opt/cachet/deploy.env
 Expected: kedua file `root root 600`.
 
 `/opt/cachet/.env` wajib berisi address testnet live, `GATEWAY_PK` testnet-only,
-`CHAIN_MODE=viem`, `X402_BYPASS=0`, `DEMO_MODE=0`, serta URL HTTPS terkait.
-`X402_FACILITATOR_URL` boleh kosong sebelum okx.ai memberikannya, tetapi paid call
-akan tetap tidak tersedia. `cachetctl` memberi warning tanpa mencetak nilainya.
+`CHAIN_MODE=viem`, `X402_BYPASS=0`, `DEMO_MODE=0`, `X402_NETWORK=eip155:1952`,
+`X402_PAY_TO`, `X402_RESOURCE_BASE=https://api.cachetprotocol.xyz`, dan credential
+`OKX_API_KEY`/`OKX_SECRET_KEY`/`OKX_PASSPHRASE`. Isi ketiga credential langsung
+melalui `sudoedit`; jangan masukkan ke shell history, chat, screenshot, atau git.
+Gateway menolak start jika x402 aktif tetapi credential tidak lengkap.
 
 `/opt/cachet/deploy.env` memakai dua image tag full SHA yang dicetak oleh
 `build-ovh-images.sh`.

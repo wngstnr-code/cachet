@@ -108,6 +108,7 @@ preflight() {
   assert_equals DEMO_MODE 0
   assert_equals CHAIN_MODE viem
   assert_equals CHAIN_ID 1952
+  assert_equals X402_NETWORK eip155:1952
 
   assert_matches GATEWAY_PK '^0x[0-9a-fA-F]{64}$'
   for address_key in ADDR_REGISTRY ADDR_CERTIFICATE ADDR_VAULT ADDR_CHALLENGE ADDR_MOCKUSDT; do
@@ -115,6 +116,12 @@ preflight() {
   done
   assert_matches RPC_URL '^https://.+'
   assert_matches CERT_PAGE_BASE '^https://.+'
+  assert_matches X402_PAY_TO '^0x[0-9a-fA-F]{40}$'
+  assert_matches X402_RESOURCE_BASE '^https://.+'
+  assert_equals OKX_BASE_URL https://web3.okx.com
+  for credential_key in OKX_API_KEY OKX_SECRET_KEY OKX_PASSPHRASE; do
+    assert_matches "${credential_key}" '^.+$'
+  done
 
   local engine_image gateway_image engine_sha gateway_sha
   engine_image="$(env_value "${DEPLOY_ENV}" ENGINE_IMAGE)"
@@ -137,9 +144,6 @@ preflight() {
 
   compose config --quiet
 
-  if [[ -z "$(env_value "${RUNTIME_ENV}" X402_FACILITATOR_URL)" ]]; then
-    log "warning: X402_FACILITATOR_URL is empty; paid calls will remain unavailable"
-  fi
   log "preflight passed (secrets were not printed)"
 }
 

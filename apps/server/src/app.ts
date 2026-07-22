@@ -24,7 +24,7 @@ export async function buildApp(deps: Deps, opts: BuildAppOptions = {}): Promise<
 
   await app.register(rateLimit, { max: opts.rateLimitMax ?? 120, timeWindow: "1 minute" });
 
-  // x402 payment guard — 402 di onRequest sebelum body diparse. Bypass di dev.
+  // SDK OKX: verify di onRequest, settlement di onSend hanya untuk respons sukses.
   registerX402(app, deps.x402);
 
   app.setErrorHandler((err: FastifyError, _req, reply) => {

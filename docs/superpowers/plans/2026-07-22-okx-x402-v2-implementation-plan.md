@@ -104,8 +104,10 @@ Steps:
 Verification:
 
 - Unpaid requests produce a v2 `PAYMENT-REQUIRED` challenge.
-- Accepted fake payments reach the handler and return a receipt.
+- Accepted fake payments reach the handler, settle after a successful response,
+  and return a receipt.
 - Rejected payments and fake Broker failures do not reach the handler.
+- Business responses with status 400 or higher are not settled.
 - Free routes remain available.
 
 ## Task 5: Update the MCP adapter contract

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Cachet gateway (Person A): REST + EIP-712 signer + ChainClient. x402 & MCP menyusul (PR-4).",
+  "description": "Cachet gateway: REST, EIP-712 signer, ChainClient, and OKX x402 v2 payment gate.",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
@@ -13,6 +13,9 @@
   "dependencies": {
     "@cachet/contracts-abi": "file:../../packages/contracts-abi",
     "@fastify/rate-limit": "^10.2.0",
+    "@okxweb3/x402-core": "0.1.0",
+    "@okxweb3/x402-evm": "0.2.1",
+    "@okxweb3/x402-fastify": "0.1.1",
     "dotenv": "^16.4.5",
     "fastify": "^5.1.0",
     "viem": "^2.21.0"

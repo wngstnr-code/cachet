@@ -1,9 +1,8 @@
 # @cachet/server — Gateway (A3)
 
 Gateway off-chain Person A: REST §3.3 + Originality Profile §3.2 + signer EIP-712 +
-`ChainClient`. Memanggil engine A1 (HTTP) dan chain (stub sekarang, viem di A5).
-
-**PR-3 = REST core + stub chain.** x402 payment guard & MCP tools menyusul di PR-4.
+`ChainClient` + payment gate x402 v2 resmi OKX. Memanggil engine A1 (HTTP), OKX
+Payment Broker, dan chain (stub untuk test; viem pada deployment testnet).
 
 Spec: `docs/technical_implementation_plan.md` §3.2/§3.3/§4-A3 · RFC-001 (P1/P4/P5/P6/P7)
 · `packages/contracts-abi/README.md` (6 aturan gateway vs kontrak nyata).
@@ -21,8 +20,22 @@ ENGINE_URL=http://localhost:8100 GATEWAY_PORT=8787 pnpm start
 ```
 
 Env dari `.env` root (§8.1): `ENGINE_URL`, `GATEWAY_PORT`, `GATEWAY_PK` (signer;
-ephemeral bila kosong — dev saja), `CHAIN_ID` (1952), `CERT_PAGE_BASE` (dari B, H4),
-`DEMO_MODE`, `GATEWAY_DATA_DIR`.
+ephemeral bila kosong — dev saja), `CHAIN_ID` (1952), `CERT_PAGE_BASE`,
+`DEMO_MODE`, `GATEWAY_DATA_DIR`, dan konfigurasi x402 pada bagian berikut.
+
+## x402 v2 / OKX Payment SDK
+
+Empat endpoint berbayar (`verify`, `commit`, `mint`, `watch`) dilindungi
+`@okxweb3/x402-fastify`. Request tanpa bayar menerima `402` +
+`PAYMENT-REQUIRED`; buyer retry memakai `PAYMENT-SIGNATURE`; settlement sukses
+menghasilkan `PAYMENT-RESPONSE`. SDK memverifikasi sebelum handler dan settle
+setelah handler menghasilkan respons sukses. Respons bisnis 4xx/5xx tidak di-settle.
+
+Deployment hackathon dikunci ke `X402_NETWORK=eip155:1952`. SDK memakai USD₮0
+testnet resmi, bukan `ADDR_MOCKUSDT`. Env produksi: `X402_PAY_TO`,
+`X402_RESOURCE_BASE`, `OKX_BASE_URL`, `OKX_API_KEY`, `OKX_SECRET_KEY`, dan
+`OKX_PASSPHRASE`. `X402_BYPASS=1` hanya untuk dev/test; saat bernilai `0`, gateway
+menolak start jika credential tidak lengkap atau URL publik/Broker bukan HTTPS.
 
 ## Endpoint (§3.3)
 
@@ -82,7 +95,8 @@ menjalankan gateway `CHAIN_MODE=viem` terhadapnya — menutup celah E3 sebelum H
 period → **ACTIVE** (isCoverageActive on-chain) → challenge buka gugatan. 34 test
 unit (stub) tetap hijau.
 
-## Belum di PR ini (menyusul, sebagian tunggu B deploy testnet)
+## Operasi yang masih terpisah
 
-- Deploy engine+gateway ke host publik HTTPS · smoke test bersama Wangsit di testnet
-  (§6) · wire facilitator x402 nyata (`X402_FACILITATOR_URL`) · registrasi ASP okx.ai.
+- Paid smoke test publik X Layer Testnet (A5.4), registrasi ASP OKX.AI, dan
+  post-listing marketplace acceptance dilakukan setelah image gateway ini lolos
+  test lokal dan dideploy.

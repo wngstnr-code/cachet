@@ -3,7 +3,7 @@
 #
 # Konfigurasi diambil dari root .env (RPC/ADDR_*/GATEWAY_PK/CHAIN_MODE/X402_*).
 # Untuk deployment yang DILISTING: pastikan X402_BYPASS=0 dan DEMO_MODE=0 di .env,
-# dan set X402_FACILITATOR_URL setelah dapat dari okx.ai.
+# serta isi credential OKX Payment API langsung pada host deployment.
 
 name: cachet
 
