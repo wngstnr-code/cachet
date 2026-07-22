@@ -123,8 +123,9 @@ Di VPS:
 mkdir -p /tmp/cachet-ovh-deploy
 tar -xzf /tmp/cachet-ovh-deploy.tar.gz -C /tmp/cachet-ovh-deploy
 sudo install -d -o root -g root -m 0755 /opt/cachet
-sudo install -d -o 10001 -g 10001 -m 0750 /var/lib/cachet/engine
-sudo install -d -o 10001 -g 10001 -m 0750 /var/lib/cachet/gateway
+sudo install -d -o root -g root -m 0750 /var/lib/cachet/engine
+sudo install -d -o root -g root -m 0750 /var/lib/cachet/gateway
+sudo chown 10001:10001 /var/lib/cachet/engine /var/lib/cachet/gateway
 sudo install -d -o root -g root -m 0700 /var/backups/cachet
 
 sudo install -o root -g root -m 0644 \
@@ -249,10 +250,14 @@ sudo /opt/cachet/cachetctl preflight
 sudo /opt/cachet/cachetctl bootstrap-engine
 ```
 
-Dari Mac, buka SSH tunnel. Port engine tetap tidak publik:
+Dari Mac, ambil IP bridge private engine lalu buka SSH tunnel. Engine tidak
+mem-publish host port dan tetap tidak memiliki network outbound:
 
 ```bash
-ssh -N -L 18100:127.0.0.1:8100 ubuntu@VPS_IP
+ENGINE_IP="$(ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 \
+  ubuntu@VPS_IP 'sudo /opt/cachet/cachetctl engine-ip')"
+ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 -N \
+  -L "18100:${ENGINE_IP}:8100" ubuntu@VPS_IP
 ```
 
 Di terminal Mac kedua, dari repo root dan venv engine:
@@ -287,13 +292,14 @@ sudo /opt/cachet/cachetctl status
 engine health/corpus gate → gateway health → internal smoke → public HTTPS smoke →
 cek endpoint berbayar tanpa payment mengembalikan 402 → baca cert testnet #6.
 
-Pastikan port aplikasi hanya listen di loopback:
+Pastikan hanya gateway yang listen di loopback; engine tidak memiliki host
+listener sama sekali:
 
 ```bash
 sudo ss -ltnp | awk '$4 ~ /:(8100|8787)$/ {print}'
 ```
 
-Expected address: `127.0.0.1`, bukan `0.0.0.0` atau `[::]`.
+Expected: hanya `127.0.0.1:8787`; tidak ada baris port 8100.
 
 ## Operasi rutin
 

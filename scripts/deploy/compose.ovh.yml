@@ -16,9 +16,6 @@ services:
       ENGINE_PORT: "8100"
       ENGINE_EMBEDDER: fake
       INDEX_PATH: /data/index
-    ports:
-      # Loopback-only for health checks and one-time preseed through an SSH tunnel.
-      - "127.0.0.1:8100:8100"
     volumes:
       - type: bind
         source: ${CACHET_DATA_ROOT:-/var/lib/cachet}/engine

@@ -194,9 +194,24 @@ backup_state() {
   log "backup created at ${backup_dir}"
 }
 
+engine_ip() {
+  require_root
+  require_command docker
+
+  local container_id ip
+  container_id="$(compose ps --quiet engine)"
+  [[ -n "${container_id}" ]] || die "engine container is not running"
+  ip="$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${container_id}")"
+  [[ "${ip}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+    || die "could not resolve the engine bridge IPv4 address"
+  printf '%s\n' "${ip}"
+}
+
 smoke_internal() {
   require_command curl
-  curl --fail --silent --show-error http://127.0.0.1:8100/healthz >/dev/null
+  local ip
+  ip="$(engine_ip)"
+  curl --fail --silent --show-error "http://${ip}:8100/healthz" >/dev/null
   curl --fail --silent --show-error http://127.0.0.1:8787/healthz >/dev/null
   log "internal engine and gateway smoke checks passed"
 }
@@ -219,7 +234,9 @@ smoke_public() {
 verify_corpus() {
   require_command curl
   require_command python3
-  curl --fail --silent --show-error http://127.0.0.1:8100/healthz \
+  local ip
+  ip="$(engine_ip)"
+  curl --fail --silent --show-error "http://${ip}:8100/healthz" \
     | python3 -c 'import json,sys; count=int(json.load(sys.stdin).get("entries",0)); print(f"entries={count}"); raise SystemExit(0 if count >= 5000 else 1)' \
     || die "engine corpus has fewer than 5000 entries"
   log "corpus size accepted"
@@ -302,7 +319,9 @@ show_status() {
 
 smoke_internal_engine() {
   require_command curl
-  curl --fail --silent --show-error http://127.0.0.1:8100/healthz >/dev/null
+  local ip
+  ip="$(engine_ip)"
+  curl --fail --silent --show-error "http://${ip}:8100/healthz" >/dev/null
   log "internal engine smoke check passed"
 }
 
@@ -321,6 +340,7 @@ Commands:
   smoke                     Run internal and public smoke checks
   corpus                    Require at least 5000 engine corpus entries
   status                    Show service and host resource status
+  engine-ip                 Print the private engine bridge IP for an SSH tunnel
 EOF
 }
 
@@ -335,5 +355,6 @@ case "${1:-}" in
   smoke) preflight; smoke_internal; smoke_public ;;
   corpus) preflight; verify_corpus ;;
   status) show_status ;;
+  engine-ip) engine_ip ;;
   *) usage; exit 2 ;;
 esac

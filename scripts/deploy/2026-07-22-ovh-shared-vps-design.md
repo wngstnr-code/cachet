@@ -70,9 +70,10 @@ and image lifecycle.
   `127.0.0.1:8787:8787`.
 - Engine is reachable from gateway as `http://engine:8100` on the private Cachet
   Docker network.
-- Engine may publish `8100` on host loopback only during initial corpus seeding.
-  Administration reaches it through an SSH local-forward; it is never bound to
-  the VPS public interface.
+- Engine never publishes a host port. During initial corpus seeding,
+  administration discovers its private Docker bridge IP and reaches that address
+  through an SSH local-forward. It remains unreachable from the VPS public
+  interface and has no outbound network.
 - UFW does not open ports 8100 or 8787.
 
 ## 4. DNS and TLS
@@ -187,9 +188,9 @@ OVHcloud host backup, when enabled, is a second recovery layer but is not a
 substitute for the pre-deploy application backup.
 
 The initial 5k synthetic corpus is seeded once through an SSH tunnel to the
-loopback-only engine port. The seed process is complete only when `/healthz`
-reports the expected entry count. Subsequent deploys reuse the existing SQLite
-database and never reseed automatically.
+engine's private Docker bridge IP. The seed process is complete only when
+`/healthz` reports the expected entry count. Subsequent deploys reuse the existing
+SQLite database and never reseed automatically.
 
 ## 9. Deployment coordination
 
