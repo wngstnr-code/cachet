@@ -133,15 +133,44 @@ describe("POST /v1/challenge", () => {
 });
 
 describe("POST /v1/watch", () => {
-  it("subscribe → subscription_id", async () => {
+  it("subscribe via image_b64 → subscription_id + titik mulai", async () => {
     const { app } = await makeApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/watch",
+      payload: { cert_id: "1", webhook_url: "https://hook.test/x", ...imgPayload },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().subscription_id).toMatch(/^sub_/);
+    expect(res.json().watching_from_entry).toBe(0);
+  });
+
+  it("subscribe via cert yang di-mint di gateway ini → pakai fingerprint tersimpan", async () => {
+    const { app, deps } = await makeApp({ verdict: "ORIGINAL" });
+    await app.inject({
+      method: "POST",
+      url: "/v1/mint",
+      payload: { ...imgPayload, creator_address: "0x3333333333333333333333333333333333333333", declared_value: "10000000" },
+    });
     const res = await app.inject({
       method: "POST",
       url: "/v1/watch",
       payload: { cert_id: "1", webhook_url: "https://hook.test/x" },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json().subscription_id).toMatch(/^sub_/);
+    const sub = deps.store.listSubscriptions().find((s) => s.cert_id === "1");
+    expect(sub?.entry_id).toBe(1); // entri corpus dari mint
+    expect(sub?.phashes?.length).toBe(4);
+  });
+
+  it("cert tak dikenal & tanpa image → 400", async () => {
+    const { app } = await makeApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/watch",
+      payload: { cert_id: "99", webhook_url: "https://hook.test/x" },
+    });
+    expect(res.statusCode).toBe(400);
   });
 });
 

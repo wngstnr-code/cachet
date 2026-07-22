@@ -61,3 +61,26 @@ class QueryOut(BaseModel):
     insurable: bool
     phashes: list[str]
     embedding_commit: str
+
+
+class NeardupsIn(BaseModel):
+    """Cari near-dup sebuah fingerprint di antara entri > since_entry_id (Watch)."""
+
+    phashes: list[str] | None = Field(None, description="4 pHash hex; ATAU pakai entry_id")
+    entry_id: int | None = Field(None, description="Ambil fingerprint dari entri ini (dikecualikan dari hasil)")
+    since_entry_id: int = Field(0, description="Hanya entri dengan id > ini")
+    exclude_entry_id: int | None = None
+
+
+class NeardupMatch(BaseModel):
+    entry_id: int
+    matched: int
+    min_hamming: int
+    source: str | None = None
+    uri: str | None = None
+    registered_at: int | None = None
+
+
+class NeardupsOut(BaseModel):
+    matches: list[NeardupMatch]
+    corpus_size: int

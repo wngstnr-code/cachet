@@ -32,6 +32,7 @@ export interface EngineClient {
   hash(raw: Uint8Array): Promise<EngineHash>;
   query(raw: Uint8Array): Promise<EngineQuery>;
   index(raw: Uint8Array, source: string, uri: string): Promise<{ entry_id: number; asset_sha256: string }>;
+  count(): Promise<number>; // ukuran corpus (untuk titik-mulai Watch)
 }
 
 function b64(raw: Uint8Array): string {
@@ -66,5 +67,12 @@ export class HttpEngineClient implements EngineClient {
       source,
       uri,
     });
+  }
+
+  async count(): Promise<number> {
+    const res = await fetch(this.baseUrl + "/healthz");
+    if (!res.ok) throw new Error(`engine /healthz → ${res.status}`);
+    const json = (await res.json()) as { entries: number };
+    return json.entries;
   }
 }

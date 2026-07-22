@@ -133,7 +133,9 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
       });
 
       // Karya ter-mint menyemai registry (§F10) — kueri berikutnya melihatnya.
-      await engine.index(raw, "cachet-mint", `cert:${certId}`);
+      const indexed = await engine.index(raw, "cachet-mint", `cert:${certId}`);
+      // Rekam cert → entri corpus + fingerprint supaya /v1/watch bisa mengawasi.
+      deps.store.recordMint(certId.toString(), { entry_id: indexed.entry_id, phashes });
 
       const signed = await signer.sign(eng.asset_sha256 as Hex, eng.verdict, phashes, now());
       const profile = buildProfile({
@@ -235,12 +237,36 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
       if (typeof body.webhook_url !== "string" && typeof body.email !== "string") {
         throw errBadRequest("wajib webhook_url atau email");
       }
+      const certId = String(body.cert_id);
+
+      // Fingerprint aset diawasi: dari catatan mint (bila di-mint di gateway ini),
+      // atau dihitung dari image_b64/url yang disertakan.
+      let entryId: number | undefined;
+      let phashes: string[] | undefined;
+      const mint = deps.store.getMint(certId);
+      if (mint) {
+        entryId = mint.entry_id;
+        phashes = mint.phashes;
+      } else if (body.image_b64 || body.image_url) {
+        phashes = (await engine.hash(await getImageBytes(body))).phashes;
+      } else {
+        throw errBadRequest(
+          "cert belum tercatat di gateway ini — sertakan image_b64/image_url aset yang diawasi",
+        );
+      }
+
+      // Titik mulai: hanya entri yang MASUK setelah subscribe yang memicu alert.
+      const lastChecked = await engine.count();
+
       const sub = deps.store.addSubscription({
-        cert_id: String(body.cert_id),
+        cert_id: certId,
         webhook_url: body.webhook_url as string | undefined,
         email: body.email as string | undefined,
+        entry_id: entryId,
+        phashes,
+        last_checked: lastChecked,
       });
-      return { subscription_id: sub.id, cert_id: sub.cert_id };
+      return { subscription_id: sub.id, cert_id: sub.cert_id, watching_from_entry: lastChecked };
     });
   });
 }

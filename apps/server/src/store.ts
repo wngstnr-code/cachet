@@ -15,11 +15,22 @@ export interface Subscription {
   webhook_url?: string;
   email?: string;
   created_at: number;
+  // Fingerprint aset yang diawasi + titik mulai — diisi gateway saat subscribe
+  // supaya Watch worker tahu apa yang dicari tanpa akses balik ke gateway.
+  entry_id?: number; // entri corpus aset diawasi (bila di-mint via gateway ini)
+  phashes?: string[]; // fallback bila entry_id tak diketahui
+  last_checked: number; // ukuran corpus saat subscribe → hanya entri lebih baru yang memicu
+}
+
+export interface CertMint {
+  entry_id: number;
+  phashes: string[];
 }
 
 interface Db {
   subscriptions: Subscription[];
   idempotency: Record<string, unknown>;
+  certMints: Record<string, CertMint>;
 }
 
 function atomicWrite(path: string, data: unknown): void {
@@ -40,9 +51,14 @@ export class Store {
 
   private load(): Db {
     try {
-      return JSON.parse(readFileSync(this.path, "utf8")) as Db;
+      const db = JSON.parse(readFileSync(this.path, "utf8")) as Partial<Db>;
+      return {
+        subscriptions: db.subscriptions ?? [],
+        idempotency: db.idempotency ?? {},
+        certMints: db.certMints ?? {},
+      };
     } catch {
-      return { subscriptions: [], idempotency: {} };
+      return { subscriptions: [], idempotency: {}, certMints: {} };
     }
   }
 
@@ -63,6 +79,15 @@ export class Store {
 
   listSubscriptions(): Subscription[] {
     return this.db.subscriptions;
+  }
+
+  recordMint(certId: string, mint: CertMint): void {
+    this.db.certMints[certId] = mint;
+    this.persist();
+  }
+
+  getMint(certId: string): CertMint | undefined {
+    return this.db.certMints[certId];
   }
 
   getIdempotent(key: string): unknown | undefined {

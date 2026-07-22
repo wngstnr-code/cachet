@@ -150,6 +150,68 @@ class EngineStore:
             min_hamming=int(min_h[best]),
         )
 
+    def get_entry_phashes(self, entry_id: int) -> list[bytes] | None:
+        cur = self._db.execute(
+            "SELECT phash0, phash1, phash2, phash3 FROM entries WHERE entry_id=?", (entry_id,)
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        return [bytes(row[k]) for k in range(4)]
+
+    def get_entry_meta(self, entry_id: int) -> dict | None:
+        cur = self._db.execute(
+            "SELECT source, uri, created_at FROM entries WHERE entry_id=?", (entry_id,)
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        return {"source": row[0], "uri": row[1], "created_at": row[2]}
+
+    def neardups_since(
+        self,
+        query_phashes: list[bytes],
+        since_entry_id: int,
+        exclude_entry_id: int | None,
+    ) -> list[dict]:
+        """Entri NEAR_DUP (≥2 hash ≤ ambang) dengan entry_id > since_entry_id.
+
+        Inti Watch: menemukan salinan yang MASUK registry setelah sebuah aset
+        diawasi. Mint menolak near-dup, jadi salinan masuk lewat /index (preseed
+        / re-scan sumber publik) — di situlah entri baru ini muncul.
+        """
+        from bisect import bisect_right
+
+        from .config import HAMMING_THRESHOLD, NEAR_DUP_MIN_MATCHES
+
+        n = self.count()
+        if n == 0:
+            return []
+
+        # _ids terurut menaik (autoincrement) → hanya periksa ekor yang baru.
+        start = bisect_right(self._ids, since_entry_id)
+        if start >= n:
+            return []
+
+        out: list[dict] = []
+        for i in range(start, n):
+            eid = self._ids[i]
+            if exclude_entry_id is not None and eid == exclude_entry_id:
+                continue
+            dists = [int(hamming_vector(self._phash_mats[k][i : i + 1], query_phashes[k])[0]) for k in range(4)]
+            matched = sum(1 for d in dists if d <= HAMMING_THRESHOLD)
+            if matched >= NEAR_DUP_MIN_MATCHES:
+                meta = self.get_entry_meta(eid) or {}
+                out.append({
+                    "entry_id": eid,
+                    "matched": matched,
+                    "min_hamming": min(dists),
+                    "source": meta.get("source"),
+                    "uri": meta.get("uri"),
+                    "registered_at": meta.get("created_at"),
+                })
+        return out
+
     def nearest_embedding(self, query_vec: np.ndarray) -> tuple[int, float] | None:
         res = self._vindex.search(query_vec, k=1)
         return res[0] if res else None

@@ -46,6 +46,9 @@ export class FakeEngineClient implements EngineClient {
     this.indexed.push({ source, uri });
     return { entry_id: this.indexed.length, asset_sha256: H("12") };
   }
+  async count() {
+    return this.indexed.length;
+  }
 }
 
 export async function makeApp(opts: {
