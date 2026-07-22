@@ -1,0 +1,7 @@
+# Artefak lokal skrip (root .gitignore = zona bersama, jangan diedit)
+__pycache__/
+*.pyc
+.pytest_cache/
+data/
+demo/generated/
+*.checkpoint.json

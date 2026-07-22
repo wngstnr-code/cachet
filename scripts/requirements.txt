@@ -1,0 +1,13 @@
+# Skrip Person A (preseed, demo fixtures, coverage).
+#
+# Memakai ULANG venv + paket engine (services/engine) — engine_bootstrap.py
+# menyisipkan services/engine ke sys.path. Jadi cara termudah: aktifkan venv
+# engine lalu tambahkan `requests` di bawah:
+#
+#   source ../services/engine/.venv/bin/activate
+#   pip install -r requirements.txt
+#
+# Dari engine sudah tersedia: pillow, numpy, fastapi, httpx, imagehash, pytest.
+# Yang khusus skrip:
+
+requests>=2.31   # ingest Wikimedia/manifest (sumber publik)
