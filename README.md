@@ -95,7 +95,7 @@ We sell trust, so the fine print is the product:
 
 - **The registry is our corpus, not the internet.** "First-seen" means first seen by Cachet.
 - **Coverage is capped at 100 USDT** per certificate during bootstrap.
-- **Adjudication is a single resolver in this MVP**, constrained by a public liveness window and published admissible-evidence rules ([`contracts/RESOLVER.md`](contracts/RESOLVER.md)). Trustless adjudication it is not, yet.
+- **Adjudication is a single resolver in this MVP**, constrained by a public liveness window and published admissible-evidence rules ([`contracts/RESOLVER.md`](contracts/RESOLVER.md)). Trustless adjudication it is not, yet — the roadmap is a decentralized oracle set (3+ independent resolvers), not a single key.
 - **The embedding tier is advisory.** Only the deterministic perceptual-hash ensemble backs hard claims; there is no "AI detector" here.
 - Everything runs on **X Layer Testnet** with a test USDT token.
 
