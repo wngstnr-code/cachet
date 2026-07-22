@@ -119,9 +119,33 @@ contract DemoFlow is Script {
             console.log("       justru karena sengketanya sudah diketahui)");
         }
 
-        // ── BABAK 3: gugatan ─────────────────────────────────────────────────
+        // G2: kelayakan klaim dinilai saat gugatan DIBUKA. Gugatan yang dibuka
+        // selama masa tunggu berakhir tanpa payout — jadi babak 3 dipisah jadi
+        // fase sendiri, dijalankan SETELAH coverage menyala (~10 detik).
+        console.log("");
+        console.log("JEDA DI SINI sampai coverage aktif (timestamp di atas), lalu:");
+        console.log("  make demo-challenge CERT_ID=%s", certId);
+
+        _reportBalances(c);
+    }
+
+    /// @notice BABAK 3: gugatan. Fase terpisah karena G2 — coverage harus
+    ///         sudah menyala saat gugatan dibuka; kalau tidak, klaim babak 5
+    ///         akan dilewati (`ClaimSkippedNoCoverage`) dan demo gagal.
+    function challengeCert(uint256 certId) external {
+        Ctx memory c = _ctx();
+
+        // Tolak dini dengan sisa detik yang bisa dibaca, bukan demo yang
+        // diam-diam berakhir tanpa payout 40 detik kemudian.
+        ICachetCertificate.CertData memory d = c.cert.certData(certId);
+        if (!c.cert.isCoverageActive(certId)) {
+            console.log("coverage BELUM aktif. Tunggu", d.coverageStart - block.timestamp, "detik lagi.");
+            revert("Coverage belum aktif -- gugatan sekarang = klaim hangus (G2)");
+        }
+
         console.log("");
         console.log("[3/5] Penantang membuka gugatan dengan bukti...");
+        console.log("      coverage: AKTIF sejak", d.coverageStart, "-- klaim akan dinilai pada momen INI");
 
         vm.startBroadcast(vm.envUint("DEMO_CHALLENGER_PK"));
         uint256 challengeId = c.cm.challenge(certId, "ipfs://bukti-karya-lebih-tua");
@@ -136,8 +160,7 @@ contract DemoFlow is Script {
         console.log("[4/5] Menunggu jendela liveness:", liveness, "detik");
         console.log("      (jendela publik ini yang menahan resolver memutus terlalu cepat)");
         console.log("");
-        console.log("      JEDA DI SINI. Jalankan lagi dengan --sig 'resolve(uint256,uint256)'");
-        console.log("      setelah jendela lewat:");
+        console.log("      JEDA DI SINI. Setelah jendela lewat:");
         console.log("      make demo-resolve CHALLENGE_ID=%s CERT_ID=%s", challengeId, certId);
 
         _reportBalances(c);
@@ -207,19 +230,19 @@ contract DemoFlow is Script {
     ///      bisa dibaca, alih-alih revert kriptik di tengah rekaman.
     function _preflightResolve(Ctx memory c, uint256 challengeId, uint256 certId) internal view {
         ICachetCertificate.CertData memory d = c.cert.certData(certId);
+        (,, uint64 openedAt,,) = c.cm.getChallenge(challengeId);
 
         console.log("");
         console.log("--- status sebelum putusan ---");
-        if (c.cert.isCoverageActive(certId)) {
-            console.log("coverage: AKTIF sejak timestamp", d.coverageStart);
-            console.log("          (masa tunggu sudah lewat -- jaminan hidup)");
+        // G2: kelayakan dinilai pada saat gugatan DIBUKA, bukan saat resolve.
+        if (openedAt >= d.coverageStart && openedAt <= d.coverageEnd) {
+            console.log("coverage: BERLAKU saat gugatan dibuka (", openedAt, ")");
+            console.log("          klaim akan dibayar walau resolve lewat coverageEnd");
         } else {
-            console.log("coverage: BELUM AKTIF. Klaim akan DITOLAK.");
-            console.log("          mulai berlaku pada:", d.coverageStart);
-            console.log("          sekarang         :", block.timestamp);
+            console.log("coverage: TIDAK berlaku saat gugatan dibuka. Klaim akan DILEWATI.");
+            console.log("          jendela :", d.coverageStart, "-", d.coverageEnd);
+            console.log("          dibuka  :", openedAt);
         }
-
-        (,, uint64 openedAt,,) = c.cm.getChallenge(challengeId);
         uint64 bolehSetelah = openedAt + c.cm.livenessWindow();
         if (block.timestamp < bolehSetelah) {
             console.log("");

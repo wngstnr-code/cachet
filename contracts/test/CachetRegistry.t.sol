@@ -103,6 +103,22 @@ contract CachetRegistryTest is Test {
         reg.transferOwnership(owner);
     }
 
+    /// @dev G5 (residual): `renounceOwnership` dimatikan — owner dibutuhkan
+    ///      selamanya untuk rem darurat & parameter. Kecelakaan "renounce lalu
+    ///      semua setter mati permanen" tidak mungkin lagi.
+    function test_G5_RenounceOwnershipDimatikan() public {
+        vm.expectRevert(CachetGoverned.RenounceDisabled.selector);
+        vm.prank(owner);
+        reg.renounceOwnership();
+
+        assertEq(reg.owner(), owner, "kepemilikan tidak berubah");
+
+        // Non-owner tetap ditolak dengan error standar.
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, stranger));
+        vm.prank(stranger);
+        reg.renounceOwnership();
+    }
+
     // ── Registrasi ───────────────────────────────────────────────────────────
 
     function test_EntryIdDimulaiDari1_BukanNol() public {

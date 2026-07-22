@@ -26,21 +26,34 @@ cp ../.env.example ../.env    # lalu isi DEPLOYER_PK, RESOLVER_ADDR, dst.
 git submodule update --init --recursive
 ```
 
-## Isi saat ini (B1 — selesai & ter-deploy)
+## Isi saat ini (B1+B2 — selesai & ter-deploy)
 
 | Kontrak | Status | Catatan |
 |---|---|---|
 | `MockUSDT` | ✅ deployed & verified | ERC-20 **6 desimal**, faucet publik, cap 1jt/panggilan |
+| `CachetRegistry` | ✅ deployed & verified | first-seen registry + commit-reveal |
+| `CachetCertificate` | ✅ deployed & verified | ERC-721, `registerAndMint` atomik (RFC-001 P1) |
+| `CachetVault` | ✅ deployed & verified | bond+premi+payout; bond penantang di-earmark (G3) |
+| `ChallengeManager` | ✅ deployed & verified | gugatan publik + liveness snapshot (G1) |
+
+169 test hijau · coverage semantik G2 (dinilai saat gugatan dibuka) ·
+`Ownable2Step` + `renounceOwnership` dimatikan (G5).
 
 ### Alamat X Layer Testnet (chainId 1952)
 
-| | |
+Sumber kebenaran untuk consumer: **`packages/contracts-abi/addresses.testnet.json`**.
+
+| Kontrak | Alamat |
 |---|---|
+| `CachetRegistry` | `0x60BEB9aAF8Bf6066A183F99702A403fAfaD19069` |
+| `CachetCertificate` | `0xBB0a921b0C575114B6CbBD7c6E8529855B697043` |
+| `CachetVault` | `0x79e959A25aF30e01D0bc9e52C693D92e02C28834` |
+| `ChallengeManager` | `0x8BF7551F7e9CB432EbA5fFC21972Bce7f509E664` |
 | `MockUSDT` | `0x9ad14e783DCe270BE1214153E940aa686f91fa40` |
-| Terverifikasi | ✅ Sourcify `exact_match` (creation + runtime) |
-| Source publik | https://repo.sourcify.dev/1952/0x9ad14e783DCe270BE1214153E940aa686f91fa40 |
-| Explorer | https://www.okx.com/web3/explorer/xlayer-test/address/0x9ad14e783DCe270BE1214153E940aa686f91fa40 |
-| Deployed | 21 Jul 2026, block 36190059 |
+
+Semua ✅ Sourcify `exact_match` — source publik di
+`https://repo.sourcify.dev/1952/<alamat>`, explorer di
+`https://www.okx.com/web3/explorer/xlayer-test/address/<alamat>`.
 
 **Ambil token gratis** (siapa pun boleh, tanpa izin):
 
@@ -70,10 +83,38 @@ test butuh kontrol penuh atas saldo tiap wallet. Kalau flag §10 diputar ke main
 kode yang berubah. Karena itu semua transfer di kontrak inti nanti **wajib memakai
 `SafeERC20`**: sebagian deployment USDT tidak mengembalikan `bool` pada `transfer`.
 
-## Berikutnya (B2)
+## Batas yang diakui terbuka (WAJIB ikut disalin ke listing/disclosure)
 
-`CachetRegistry` · `CachetCertificate` (dengan `registerAndMint` atomik dari RFC-001)
-· `CachetVault` · `ChallengeManager` + `Deploy.s.sol` (wiring lengkap + assert).
+Produk ini menjual kepercayaan, jadi klaimnya harus tepat. Yang benar untuk
+dikatakan: **"aturan mainnya on-chain dan bisa diaudit; operatornya masih
+terpusat."** Jangan pernah menulis "trustless", "insurance/asuransi", atau
+"keaslian terjamin".
+
+**Struktural (tidak bisa ditutup kode di MVP):**
+
+- **Adjudikasi tersentralisasi (A1).** Yang memutus menang/kalah adalah
+  `resolver` — wallet operator, bukan mekanisme terdesentralisasi. Kontrak
+  tidak bisa membedakan resolver jujur dari yang berkolusi; batas kerugian =
+  saldo vault. Rem yang ada: jendela liveness publik (min 30 detik, tercatat
+  on-chain) + seluruh bukti & putusan on-chain + runbook bukti admissible
+  (`RESOLVER.md`). Putusan final, tanpa banding. Roadmap: optimistic oracle.
+- **Kunci resolver hilang = sistem gugatan mati permanen (C1).** Wiring
+  set-once; tidak ada jalur pemulihan selain redeploy. Mitigasi testnet:
+  backup kunci; sebelum mainnet: multisig.
+- **Tidak ada pause (C3).** Sengaja — `Pausable` memberi owner kuasa
+  membekukan payout, kekuasaan yang justru sudah kami cabut.
+
+**Batasan yang diterima sadar (D-list):**
+
+| Batasan | Konsekuensi jujur |
+|---|---|
+| Registry = korpus Cachet, bukan seluruh internet | "first-seen" berarti *di registry kami per timestamp T* |
+| Coverage berplafon saldo vault | dana kurang → `PartialPayout`, bukan revert |
+| Modal operator tidak bisa ditarik | tidak ada fungsi withdraw, termasuk owner |
+| Bond penantang di-earmark (G3) | klaim/bounty dibayar dari saldo di luar `reservedChallengeBonds` |
+| Kontrak tidak memverifikasi isi karya | hanya "hash X ada sejak T", bukan "X asli" |
+| Tier embedding | **advisory**, bukan "AI detector" |
+| Owner bisa menyetel parameter | dalam pagar lantai/plafon konstanta, tercatat `ParamChanged` — tapi tidak bisa mengganti wiring, logika, atau menarik dana |
 
 ## Yang mudah bikin tersandung
 

@@ -70,6 +70,26 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
     mapping(uint256 => CertFunds) public certFunds;
     mapping(uint256 => uint256) public challengeBonds;
 
+    /// @notice G2: timestamp saat gugatan DIBUKA, dicatat di `collectChallengeBond`
+    ///         (dipanggil sinkron dari `challenge()`, jadi `block.timestamp` di
+    ///         sana = openedAt). Kelayakan coverage dinilai terhadap momen INI,
+    ///         bukan momen resolve — jendela liveness tidak boleh menggerus
+    ///         ekor coverage, dan gugatan yang dibuka sebelum coverage aktif
+    ///         tidak berhak atas klaim.
+    mapping(uint256 => uint64) public challengeOpenedAt;
+
+    /// @notice G3: total bond penantang yang gugatannya masih terbuka.
+    ///         Dana ini MILIK PENANTANG, bukan kolam klaim. Klaim & bounty
+    ///         (sertifikat mana pun) dibayar dari saldo DI LUAR cadangan ini
+    ///         (`_payUnreserved`) — jadi klaim besar sertifikat lain tidak
+    ///         bisa memakan bond gugatan yang belum diputus, dan refund bond
+    ///         penantang yang menang selalu terbayar penuh.
+    ///
+    ///         Invariant: saldo vault >= reservedChallengeBonds, karena tiap
+    ///         kenaikan cadangan disertai transfer masuk sebesar itu, dan
+    ///         semua jalur keluar lain dibatasi saldo-di-luar-cadangan.
+    uint256 public reservedChallengeBonds;
+
     error NotCertificate(address caller, address expected);
     error NotChallengeManager(address caller, address expected);
     error NotWired(string what);
@@ -224,6 +244,8 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
         nonReentrant
     {
         challengeBonds[challengeId] = amount;
+        challengeOpenedAt[challengeId] = uint64(block.timestamp); // G2
+        reservedChallengeBonds += amount; // G3: bond dicadangkan, bukan kolam klaim
 
         _payToken.safeTransferFrom(challenger, address(this), amount);
         emit ChallengeBondCollected(challengeId, challenger, amount);
@@ -248,10 +270,12 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
         CertFunds memory f = certFunds[certId];
         ICachetCertificate.CertData memory d = ICachetCertificate(certificate).certData(certId);
 
-        // 1. Bond penantang kembali — uangnya sendiri.
+        // 1. Bond penantang kembali — uangnya sendiri. Cadangan dilepas dulu
+        //    (G3); refund dijamin penuh oleh invariant saldo >= cadangan.
         uint256 bond = challengeBonds[challengeId];
         challengeBonds[challengeId] = 0;
         if (bond > 0) {
+            reservedChallengeBonds -= bond;
             uint256 refunded = _pay(challenger, bond);
             emit BondRefunded(challengeId, challenger, refunded);
         }
@@ -264,8 +288,8 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
         uint256 declaredValue = d.declaredValue;
         uint256 paid = 0;
 
-        if (_coverageApplies(certId, d)) {
-            paid = _pay(certHolder, declaredValue);
+        if (_coverageApplies(certId, d, challengeOpenedAt[challengeId])) {
+            paid = _payUnreserved(certHolder, declaredValue); // G3: jangan makan bond gugatan lain
             if (paid < declaredValue) emit PartialPayout(certId, declaredValue, paid);
             emit ClaimPaid(certId, certHolder, paid);
         } else {
@@ -277,7 +301,7 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
 
         // 3. Bounty penantang = fraud bond kreator + 50% premi (§1.3).
         uint256 bounty = f.fraudBond + (f.premium / 2);
-        uint256 bountyPaid = _pay(challenger, bounty);
+        uint256 bountyPaid = _payUnreserved(challenger, bounty); // G3
         emit BountyPaid(challengeId, challenger, bountyPaid);
     }
 
@@ -293,8 +317,9 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
 
         uint256 bond = challengeBonds[challengeId];
         challengeBonds[challengeId] = 0;
+        reservedChallengeBonds -= bond; // G3: bond terpakai (slash), cadangan dilepas
 
-        uint256 toHolder = bond / 2; // sisanya tinggal di vault
+        uint256 toHolder = bond / 2; // sisanya tinggal di vault (jadi kolam bebas)
         uint256 paid = _pay(certHolder, toHolder);
         emit BondSlashed(challengeId, certHolder, paid);
     }
@@ -332,7 +357,18 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
     ///
     ///      Sertifikat yang sudah dicabut sebelumnya tidak mungkin sampai ke
     ///      sini: `challenge()` menolaknya lebih dulu.
-    function _coverageApplies(uint256 certId, ICachetCertificate.CertData memory d)
+    ///
+    ///      G2: jendela dinilai terhadap `openedAt` (saat gugatan dibuka),
+    ///      BUKAN `block.timestamp` saat resolve. Dua lubang yang ditutup:
+    ///      - ekor: gugatan sah di ujung coverage tidak lagi gugur hanya
+    ///        karena liveness mendorong resolve melewati `coverageEnd`;
+    ///      - tepi depan: gugatan yang dibuka SEBELUM `coverageStart` (masa
+    ///        tunggu) tidak berhak klaim meski resolve mendarat setelahnya —
+    ///        masa tunggu jadi benar-benar berarti.
+    ///      `openedAt == 0` (bond tak pernah ditarik untuk challengeId ini)
+    ///      otomatis gagal — konsisten dengan "tidak ada bond, tidak ada
+    ///      coverage".
+    function _coverageApplies(uint256 certId, ICachetCertificate.CertData memory d, uint64 openedAt)
         private
         view
         returns (bool)
@@ -350,8 +386,23 @@ contract CachetVault is ICachetVault, CachetGoverned, ReentrancyGuard {
         if (!certFunds[certId].collected) return false;
 
         if (!d.insurable) return false;
-        // forge-lint: disable-next-line(block-timestamp)
-        return block.timestamp >= d.coverageStart && block.timestamp <= d.coverageEnd;
+        return openedAt >= d.coverageStart && openedAt <= d.coverageEnd;
+    }
+
+    /// @dev G3: seperti `_pay`, tapi dibatasi saldo DI LUAR cadangan bond
+    ///      penantang. Dipakai untuk klaim & bounty — dua-duanya janji sistem,
+    ///      bukan uang titipan; keduanya boleh terbayar sebagian, tapi tidak
+    ///      boleh mengambil dari bond gugatan yang belum diputus.
+    function _payUnreserved(address to, uint256 amount) private returns (uint256 sent) {
+        if (amount == 0) return 0;
+
+        uint256 balance = _payToken.balanceOf(address(this));
+        uint256 reserved = reservedChallengeBonds;
+        uint256 available = balance > reserved ? balance - reserved : 0;
+        sent = amount > available ? available : amount;
+        if (sent == 0) return 0;
+
+        _payToken.safeTransfer(to, sent);
     }
 
     /// @dev INVARIANT §9.3. Tidak pernah mengirim melebihi saldo; mengembalikan

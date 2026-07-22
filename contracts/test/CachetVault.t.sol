@@ -300,7 +300,10 @@ contract CachetVaultTest is Test {
         vm.warp(block.timestamp + 73 hours);
 
         // Kuras vault lewat jalur sah supaya saldo benar-benar nol.
+        // G2: bond challenge 99 di-collect DI SINI (openedAt = sekarang, di
+        // dalam coverage) — kelayakan dinilai pada openedAt, bukan saat resolve.
         vm.startPrank(cm);
+        vault.collectChallengeBond(99, gateway, 0);
         vault.settleChallengeWon(certId, 99, creator, creator);
         vm.stopPrank();
 
@@ -310,6 +313,27 @@ contract CachetVaultTest is Test {
         vm.startPrank(cm);
         // Tidak revert meski tidak ada dana untuk dibayarkan penuh.
         vault.settleChallengeLost(certId2, 100, creator);
+        vm.stopPrank();
+    }
+
+    // ── G3: bond penantang dicadangkan, bukan kolam klaim ────────────────────
+
+    function test_G3_ReservedNaikSaatCollect_TurunSaatSettle() public {
+        uint256 certId = _mint(creator);
+        vm.warp(block.timestamp + 73 hours);
+
+        vm.startPrank(cm);
+        vault.collectChallengeBond(1, gateway, 10e6);
+        assertEq(vault.reservedChallengeBonds(), 10e6, "collect menaikkan cadangan");
+
+        vault.collectChallengeBond(2, gateway, 10e6);
+        assertEq(vault.reservedChallengeBonds(), 20e6);
+
+        vault.settleChallengeLost(certId, 2, creator);
+        assertEq(vault.reservedChallengeBonds(), 10e6, "slash melepas cadangan");
+
+        vault.settleChallengeWon(certId, 1, creator, gateway);
+        assertEq(vault.reservedChallengeBonds(), 0, "refund melepas cadangan");
         vm.stopPrank();
     }
 

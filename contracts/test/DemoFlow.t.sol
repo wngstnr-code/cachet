@@ -118,7 +118,15 @@ contract DemoFlowTest is Test {
         cert.transferFrom(creator, buyer, certId);
         assertEq(cert.ownerOf(certId), buyer, "jaminan ikut pindah, tanpa langkah tambahan");
 
-        // ── 3. Gugatan ───────────────────────────────────────────────────────
+        // ── 3. Masa tunggu lewat, coverage MENYALA, baru gugatan ─────────────
+        // G2: kelayakan klaim dinilai saat gugatan DIBUKA. Gugatan yang dibuka
+        // selama masa tunggu berakhir tanpa payout — jadi demo menunggu 10
+        // detik sampai coverage aktif, BARU menggugat. Total durasi tetap
+        // 10 + 30 = 40 detik, dan penonton kini melihat momen coverage menyala
+        // sebagai babak sendiri, bukan sekadar angka.
+        vm.warp(block.timestamp + DEMO_WAITING_PERIOD);
+        assertTrue(cert.isCoverageActive(certId), "coverage aktif setelah masa tunggu 10 detik");
+
         vm.prank(challenger);
         uint256 challengeId = cm.challenge(certId, "ipfs://bukti-karya-lebih-tua");
 
@@ -128,17 +136,6 @@ contract DemoFlowTest is Test {
         cm.resolve(challengeId, true, "ipfs://putusan");
 
         vm.warp(block.timestamp + DEMO_LIVENESS_WINDOW);
-
-        // Inti pemilihan angka: masa tunggu (10 dtk) berjalan BERSAMAAN dengan
-        // jendela liveness (30 dtk), bukan berurutan. Saat liveness habis,
-        // coverage sudah aktif -- jadi masa tunggu tidak menambah waktu tunggu
-        // sedetik pun, tapi mekanismenya tetap tampil di video.
-        assertTrue(cert.isCoverageActive(certId), "coverage sudah aktif saat liveness habis");
-        assertGt(
-            DEMO_LIVENESS_WINDOW,
-            DEMO_WAITING_PERIOD,
-            "liveness harus lebih panjang supaya masa tunggu terserap"
-        );
 
         // ── 5. Putusan: uang ke PEMBELI ──────────────────────────────────────
         uint256 buyerBefore = usdt.balanceOf(buyer);
