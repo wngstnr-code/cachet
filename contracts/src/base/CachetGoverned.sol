@@ -81,7 +81,21 @@ abstract contract CachetGoverned is Ownable2Step {
     ///      kebijakan — kontrak hanya menjamin mekanismenya hidup.
     error ParamBelowFloor(uint256 value, uint256 min);
 
+    /// @notice `renounceOwnership` DIMATIKAN (residual G5).
+    error RenounceDisabled();
+
     constructor(address owner_) Ownable(owner_) {}
+
+    /// @notice G5 (residual): melepas kepemilikan dilarang. Owner tidak pernah
+    ///         perlu melepas kuasa — justru dibutuhkan selamanya untuk rem
+    ///         darurat (`maxDeclaredValue = 0`) dan penyetelan parameter.
+    ///         `renounceOwnership` yang tak sengaja mematikan SEMUA setter
+    ///         permanen; jalur kecelakaan itu ditutup, bukan dipersulit.
+    ///         Serah terima kuasa tetap bisa lewat `transferOwnership` +
+    ///         `acceptOwnership` (dua langkah).
+    function renounceOwnership() public view override onlyOwner {
+        revert RenounceDisabled();
+    }
 
     /// @notice Wiring SEKALI SEUMUR HIDUP kontrak.
     ///

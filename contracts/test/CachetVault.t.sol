@@ -316,6 +316,27 @@ contract CachetVaultTest is Test {
         vm.stopPrank();
     }
 
+    // ── G3: bond penantang dicadangkan, bukan kolam klaim ────────────────────
+
+    function test_G3_ReservedNaikSaatCollect_TurunSaatSettle() public {
+        uint256 certId = _mint(creator);
+        vm.warp(block.timestamp + 73 hours);
+
+        vm.startPrank(cm);
+        vault.collectChallengeBond(1, gateway, 10e6);
+        assertEq(vault.reservedChallengeBonds(), 10e6, "collect menaikkan cadangan");
+
+        vault.collectChallengeBond(2, gateway, 10e6);
+        assertEq(vault.reservedChallengeBonds(), 20e6);
+
+        vault.settleChallengeLost(certId, 2, creator);
+        assertEq(vault.reservedChallengeBonds(), 10e6, "slash melepas cadangan");
+
+        vault.settleChallengeWon(certId, 1, creator, gateway);
+        assertEq(vault.reservedChallengeBonds(), 0, "refund melepas cadangan");
+        vm.stopPrank();
+    }
+
     function test_BalanceOfVaultMencerminkanSaldoNyata() public {
         assertEq(vault.balanceOfVault(), 0);
         _mint(creator);

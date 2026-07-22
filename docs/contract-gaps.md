@@ -3,14 +3,17 @@
 > **Status:** per 22 Jul 2026, setelah B1/B2a/B2b + **enam** putaran audit.
 > Audit keenam memverifikasi ulang seluruh daftar ini terhadap kode terkini
 > (pasca commit `f1a54b4`, lantai parameter): **kategori B sudah tertutup**,
-> dan ditemukan gap baru — kategori **G**. Tindak lanjut: **G1, G2, G4, G5
-> kini tertutup** (snapshot liveness + coverage@openedAt + rapikan komentar +
-> Ownable2Step; 166 test hijau; G2 disetujui lewat delegasi Dien→B).
-> Sisa terbuka: **G3** (earmark bond — bahas setelah review) dan A/C/D/E.
+> dan ditemukan gap baru — kategori **G**. Tindak lanjut: **SELURUH kategori G
+> tertutup** (G1 snapshot liveness · G2 coverage@openedAt · G3 earmark bond ·
+> G4 komentar · G5 Ownable2Step + renounce dimatikan, tanpa residual;
+> 169 test hijau; G2 lewat delegasi Dien→B). E1 tuntas: deploy final
+> terverifikasi + golden path on-chain. Sisa terbuka murni non-kode:
+> A1/A2 (struktural), C1 (prosedural), D-list (disclosure — kini tertulis di
+> `contracts/README.md`), E2 (review PR #14).
 > **Tujuan:** daftar jujur semua yang BELUM tertutup, supaya keputusannya diambil
 > sadar — bukan ditemukan juri.
 >
-> 166 test hijau (pasca G1+G2+G5), 21/21 mutasi tertangkap, coverage 99.6% baris.
+> 169 test hijau (pasca G1+G2+G3+G5), 21/21 mutasi tertangkap, coverage 99.6% baris.
 > Angka itu mengukur apakah kode yang ADA benar. Dokumen ini soal yang
 > **tidak ada**.
 
@@ -151,7 +154,7 @@ didelegasikan Dien ke B** (persetujuan lisan, 22 Jul) — tidak menyentuh §3.1
 jadi tanpa changelog freeze. +2 test regresi (ekor & tepi depan), golden path
 diverifikasi ulang end-to-end di testnet dengan semantik baru.
 
-### G3. Bond penantang tidak dipisahkan dari kolam klaim 🟡
+### G3. Bond penantang tidak dipisahkan dari kolam klaim — ✅ TERTUTUP
 
 Pembukuan vault agregat: satu saldo untuk modal, premi, fraud bond, dan
 challenge bond. `_pay` membayar sebatas saldo. Akibatnya klaim besar sertifikat
@@ -164,8 +167,14 @@ menjelaskan kenapa refund kurang.
 Ini beda dari D1 (klaim berplafon saldo — diterima sadar): yang berisiko di
 sini adalah **uang milik penantang**, bukan janji coverage operator.
 
-**Opsi:** earmark bond (saldo terpisah / akuntansi per-tujuan), atau terima dan
-dokumentasikan di disclosure + cert page.
+**Perbaikan (terpasang):** earmark. `reservedChallengeBonds` menghitung total
+bond gugatan yang masih terbuka; klaim & bounty dibayar lewat `_payUnreserved`
+(saldo di luar cadangan), sedangkan refund/slash bond melepas cadangan dulu.
+Invariant: saldo vault ≥ cadangan, karena tiap kenaikan cadangan disertai
+transfer masuk sebesar itu dan semua jalur keluar lain dibatasi
+saldo-di-luar-cadangan. Refund bond penantang yang menang kini selalu penuh.
++2 test (akuntansi cadangan; skenario "klaim besar cert lain tidak memakan
+bond gugatan terbuka").
 
 ### G4. Komentar kode basi — bisa menyesatkan disclosure — ✅ TERTUTUP
 
@@ -198,13 +207,13 @@ saat itu — dampaknya sekelas C1, bukan pengurasan dana.
 `Ownable2Step`. Satu titik ubah di base → keempat kontrak inti ikut. Pemilik
 baru WAJIB `acceptOwnership()`, jadi `transferOwnership` ke alamat salah ketik
 hanya menggantung sebagai `pendingOwner` tanpa memutus kendali. +2 test
-(transfer dua langkah & accept), 164 test hijau.
+(transfer dua langkah & accept) plus test `RenounceDisabled`.
 
-**Residual yang diakui jujur:** `renounceOwnership` **tetap satu langkah**
-bawaan OZ — Ownable2Step tidak mengubahnya. Itu pemakaian eksplisit (bukan
-kecelakaan diam seperti typo transfer), jadi diterima; kalau mau ditutup total,
-override `renounceOwnership` agar revert (owner memang tak pernah perlu
-melepas kuasa — ia butuhnya untuk rem darurat `maxDeclaredValue = 0`).
+**Residual — kini ikut tertutup:** `renounceOwnership` di-override agar revert
+(`RenounceDisabled`). Owner tidak pernah perlu melepas kuasa — ia dibutuhkan
+selamanya untuk rem darurat `maxDeclaredValue = 0` dan penyetelan parameter.
+Serah terima kuasa tetap bisa lewat dua langkah `transferOwnership` +
+`acceptOwnership`. G5 tertutup TANPA residual.
 
 ---
 
@@ -312,27 +321,22 @@ ERC-8004, seasoning otomatis on-chain, zkML, C2PA anchoring penuh.
   delegasi Dien→B; golden path diverifikasi ulang di testnet).
 - ~~G4 rapikan komentar basi~~ → ✅ tertutup (komentar saja, nol perubahan
   perilaku).
-- ~~G5 `Ownable2Step`~~ → ✅ tertutup sebelum deploy (satu titik ubah di
-  `CachetGoverned`, +2 test; 164 test hijau). Residual `renounceOwnership`
-  satu langkah diakui di §G5.
+- ~~G3 earmark bond penantang~~ → ✅ tertutup (`reservedChallengeBonds` +
+  `_payUnreserved`; refund penantang menang selalu penuh; +2 test).
+- ~~G5 `Ownable2Step`~~ → ✅ tertutup TANPA residual (`Ownable2Step` +
+  `renounceOwnership` di-override revert; +3 test).
+- ~~E1 deploy testnet~~ → ✅ tuntas: deploy final terverifikasi Sourcify
+  4/4 `exact_match`, wiring dikonfirmasi on-chain, golden path penuh
+  (mint → jual → coverage menyala → gugat → resolve → payout ke pembeli)
+  smoke-test end-to-end dengan semantik final.
+- ~~A1 + D-list masuk README~~ → ✅ ada di `contracts/README.md`
+  ("Batas yang diakui terbuka") — wajib disalin ke listing/disclosure.
 
-**Butuh keputusan kalian berdua:**
+**Seluruh gap level kode TERTUTUP. 169 test hijau.** Sisa terbuka murni
+manusia/prosedur:
 
 | # | Pertanyaan | Biaya |
 |---|---|---|
-| G3 | Earmark bond penantang, atau cukup didokumentasikan? | sedang / 0 |
 | C1 | Cadangan kunci resolver / multisig? | prosedur, bukan kode |
 | A1 | Siapa yang pegang resolver — bisa orang luar? | mencari orang |
-
-**Tidak butuh keputusan, butuh dikerjakan:**
-
-- **E1 deploy testnet** — prioritas tertinggi (diverifikasi ulang audit keenam:
-  `broadcast/` baru berisi MockUSDT, empat kontrak inti belum pernah menyentuh chain)
-- **E2 review Dien** atas PR #7
-- **A1 + D-list masuk README** dan disclosure listing
-
-**Saranku soal urutan:** G1 & G4 sudah dikerjakan. G2 tinggal satu tema dengan
-G1 (snapshot kondisi saat gugatan dibuka) dan menambal sisa lubang di mitigasi
-utama A1 — tapi karena ia menggeser semantik masa tunggu dan merusak klimaks
-`DemoFlow`, ia butuh persetujuan A+B lebih dulu. G3/G5 bahas setelah deploy —
-karena E1 kemungkinan besar menghasilkan temuan yang mengubah prioritas.
+| E2 | Review Dien atas PR #14 (mata kedua pertama) | review |

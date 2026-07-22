@@ -373,6 +373,89 @@ contract IntegrationTest is Test {
         assertTrue(cert2.certData(certId).revoked, "sertifikat tetap dicabut walau bayar sebagian");
     }
 
+    /// @dev G3: klaim besar sertifikat LAIN tidak boleh memakan bond gugatan
+    ///      yang masih terbuka — dan refund bond penantang yang menang selalu
+    ///      penuh. Memakai stack baru TANPA modal awal supaya kelangkaan dana
+    ///      benar-benar terjadi.
+    function test_G3_KlaimBesarTidakMemakanBondGugatanLain_RefundSelaluPenuh() public {
+        CachetRegistry reg2 = new CachetRegistry(owner);
+        CachetCertificate cert2 = new CachetCertificate(owner);
+        CachetVault vault2 = new CachetVault(owner, address(usdt), address(cert2));
+        ChallengeManager cm2 = new ChallengeManager(owner);
+
+        vm.startPrank(owner);
+        reg2.setGateway(address(cert2));
+        cert2.setGateway(gateway);
+        cert2.setChallengeManager(address(cm2));
+        cert2.setRegistry(address(reg2));
+        cert2.setVault(address(vault2));
+        vault2.setChallengeManager(address(cm2));
+        cm2.setResolver(resolver);
+        cm2.setCertificate(address(cert2));
+        cm2.setVault(address(vault2));
+        vm.stopPrank();
+
+        vm.prank(gateway);
+        usdt.approve(address(vault2), type(uint256).max);
+        vm.prank(challenger);
+        usdt.approve(address(vault2), type(uint256).max);
+        address challenger2 = makeAddr("challenger2-g3");
+        usdt.mint(challenger2, 100e6);
+        vm.prank(challenger2);
+        usdt.approve(address(vault2), type(uint256).max);
+
+        // Dua sertifikat; vault hanya berisi bond+premi keduanya (12 USDT).
+        ICachetCertificate.MintRequest memory r = ICachetCertificate.MintRequest({
+            to: buyer,
+            phashes: phashes,
+            embCommit: keccak256("emb-a"),
+            revealedCommit: bytes32(0),
+            assetURI: "ipfs://a",
+            tokenURI_: "ipfs://ma",
+            declaredValue: DECLARED,
+            fraudBond: FRAUD_BOND,
+            premium: PREMIUM,
+            insurable: true
+        });
+        vm.prank(gateway);
+        (, uint256 certA) = cert2.registerAndMint(r);
+        r.embCommit = keccak256("emb-b");
+        vm.prank(gateway);
+        (, uint256 certB) = cert2.registerAndMint(r);
+
+        vm.warp(block.timestamp + 73 hours);
+
+        // Gugatan atas certB dibuka DULU dan masih menggantung.
+        vm.prank(challenger2);
+        uint256 chB = cm2.challenge(certB, "ipfs://bukti-b");
+        // Lalu certA digugat dan diputus menang — klaim 50 USDT, dana tipis.
+        vm.prank(challenger);
+        uint256 chA = cm2.challenge(certA, "ipfs://bukti-a");
+
+        vm.warp(block.timestamp + 48 hours);
+        vm.prank(resolver);
+        cm2.resolve(chA, true, "ipfs://putusan-a");
+
+        // Bond gugatan B (10 USDT) harus tetap utuh di vault.
+        assertGe(
+            vault2.balanceOfVault(),
+            CHALLENGE_BOND,
+            "klaim certA hanya boleh makan saldo di luar cadangan bond B"
+        );
+        assertEq(vault2.reservedChallengeBonds(), CHALLENGE_BOND, "cadangan B masih hidup");
+
+        // Gugatan B menang: refund bond challenger2 WAJIB penuh.
+        uint256 c2Before = usdt.balanceOf(challenger2);
+        vm.prank(resolver);
+        cm2.resolve(chB, true, "ipfs://putusan-b");
+
+        assertGe(
+            usdt.balanceOf(challenger2) - c2Before,
+            CHALLENGE_BOND,
+            "refund bond penantang yang menang tidak boleh tergerus klaim sertifikat lain"
+        );
+    }
+
     function test_FundMenambahKemampuanBayar() public {
         uint256 before = vault.balanceOfVault();
 
