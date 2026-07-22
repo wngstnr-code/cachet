@@ -26,6 +26,14 @@ contract ChallengeManager is IChallengeManager, CachetGoverned, ReentrancyGuard 
         uint256 certId;
         address challenger;
         uint64 openedAt;
+        /// @dev G1: `livenessWindow` DIBEKUKAN saat gugatan dibuka. `resolve()`
+        ///      memakai nilai ini, bukan nilai `livenessWindow` saat resolve —
+        ///      supaya owner tidak bisa memperpendek (mempercepat putusan,
+        ///      melubangi jendela pengawasan yang dijanjikan) atau memperpanjang
+        ///      (menunda putusan & mengunci sertifikat) sebuah gugatan yang
+        ///      SUDAH terbuka. Perubahan parameter hanya berlaku untuk gugatan
+        ///      berikutnya.
+        uint64 livenessSnapshot;
         Status status;
         string evidenceURI;
     }
@@ -158,6 +166,7 @@ contract ChallengeManager is IChallengeManager, CachetGoverned, ReentrancyGuard 
             certId: certId,
             challenger: msg.sender,
             openedAt: uint64(block.timestamp),
+            livenessSnapshot: livenessWindow, // G1: bekukan nilai saat gugatan dibuka
             status: Status.Open,
             evidenceURI: evidenceURI
         });
@@ -185,7 +194,12 @@ contract ChallengeManager is IChallengeManager, CachetGoverned, ReentrancyGuard 
         // Jendela liveness: memberi publik waktu melihat bukti sebelum
         // operator memutus. Ini satu-satunya rem terhadap resolver di MVP —
         // jangan pernah dilewati.
-        uint64 requiredUntil = c.openedAt + livenessWindow;
+        //
+        // G1: pakai `livenessSnapshot` (nilai saat gugatan DIBUKA), bukan
+        // `livenessWindow` saat ini. Kalau memakai nilai sekarang, owner bisa
+        // memperpendek jendela di tengah gugatan yang sudah berjalan dan
+        // memaksa putusan dini — persis lubang yang lantai B1 tidak tutup.
+        uint64 requiredUntil = c.openedAt + c.livenessSnapshot;
         // forge-lint: disable-next-line(block-timestamp)
         if (block.timestamp < requiredUntil) revert LivenessNotElapsed(c.openedAt, requiredUntil);
 

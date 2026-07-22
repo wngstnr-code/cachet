@@ -60,6 +60,49 @@ contract CachetRegistryTest is Test {
         reg.setGateway(address(0));
     }
 
+    // ── G5: kepemilikan dua langkah (Ownable2Step) ───────────────────────────
+    // Diuji di Registry sebagai wakil semua kontrak: kelimanya mewarisi perilaku
+    // ini dari CachetGoverned, jadi satu pembuktian di sini menutup keempatnya.
+
+    /// @dev G5: `transferOwnership` tidak langsung memindah kuasa. Alamat salah
+    ///      ketik yang tidak pernah `acceptOwnership` hanya menggantung sebagai
+    ///      `pendingOwner` — owner lama tetap memegang seluruh setter. Tanpa ini,
+    ///      satu typo mematikan semua parameter permanen (sekelas C1).
+    function test_G5_TransferOwnershipDuaLangkah_TypoTidakMemutusKendali() public {
+        address newOwner = makeAddr("newOwner");
+
+        vm.prank(owner);
+        reg.transferOwnership(newOwner);
+
+        // Kuasa BELUM pindah: owner lama masih owner, newOwner cuma pending.
+        assertEq(reg.owner(), owner, "owner lama tetap memegang kendali sebelum accept");
+        assertEq(reg.pendingOwner(), newOwner, "newOwner baru berstatus pending");
+
+        // pendingOwner belum boleh menggovern.
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, newOwner));
+        vm.prank(newOwner);
+        reg.transferOwnership(newOwner);
+    }
+
+    /// @dev G5: transfer selesai HANYA setelah pemilik baru `acceptOwnership`,
+    ///      dan owner lama kehilangan kuasa saat itu juga.
+    function test_G5_AcceptOwnership_MenyelesaikanTransfer() public {
+        address newOwner = makeAddr("newOwner");
+
+        vm.prank(owner);
+        reg.transferOwnership(newOwner);
+
+        vm.prank(newOwner);
+        reg.acceptOwnership();
+
+        assertEq(reg.owner(), newOwner, "kuasa pindah setelah accept");
+        assertEq(reg.pendingOwner(), address(0), "pending dibersihkan");
+
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, owner));
+        vm.prank(owner);
+        reg.transferOwnership(owner);
+    }
+
     // ── Registrasi ───────────────────────────────────────────────────────────
 
     function test_EntryIdDimulaiDari1_BukanNol() public {

@@ -138,8 +138,12 @@ contract CachetCertificate is ICachetCertificate, ERC721URIStorage, CachetGovern
 
     // ── Parameter (§5.0) ─────────────────────────────────────────────────────
 
-    /// @param v 0 diperbolehkan (coverage aktif seketika); batas atas menjaga
-    ///          owner tidak bisa menunda coverage sampai tak berarti.
+    /// @param v dibatasi lantai `MIN_WAITING_PERIOD` (10 detik) dan plafon
+    ///          `MAX_WAITING_PERIOD` (30 hari). 0 DITOLAK (`ParamBelowFloor`):
+    ///          masa tunggu tidak bisa dimatikan total — kalau bisa, owner+
+    ///          gateway bisa menerbitkan lalu langsung menjamin tanpa jeda
+    ///          pengawasan. Plafon menjaga coverage tidak bisa ditunda sampai
+    ///          tak berarti.
     function setWaitingPeriod(uint64 v) external onlyOwner {
         if (v < MIN_WAITING_PERIOD) revert ParamBelowFloor(v, MIN_WAITING_PERIOD);
         if (v > MAX_WAITING_PERIOD) revert ParamOutOfRange(v, MAX_WAITING_PERIOD);
