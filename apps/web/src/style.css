@@ -48,11 +48,23 @@ a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset:
   margin-bottom: 48px;
 }
 .masthead .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-family: var(--serif);
   font-weight: 700;
   font-size: 20px;
   color: var(--ink);
   text-decoration: none;
+}
+.brand-logo {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+.brand-logo-lg {
+  width: 36px;
+  height: 36px;
 }
 .masthead .sep { color: var(--muted); }
 .masthead h1 {
@@ -260,6 +272,9 @@ td.mono, .mono { font-family: var(--mono); font-size: 13px; }
   color: var(--muted);
 }
 .lookup .brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-family: var(--serif);
   font-weight: 700;
   font-size: 32px;
