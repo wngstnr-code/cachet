@@ -17,6 +17,7 @@ import { addresses } from "@cachet/contracts-abi";
 
 import { StubChainClient } from "./chain/stub.js";
 import type { ChainClient } from "./chain/types.js";
+import { ViemChainClient, type ViemAddresses } from "./chain/viem.js";
 import { HttpEngineClient, type EngineClient } from "./engine/client.js";
 import { VerdictSigner } from "./signer.js";
 import { Store } from "./store.js";
@@ -41,11 +42,27 @@ export interface Config {
   port: number;
   engineUrl: string;
   chainId: number;
+  rpcUrl: string;
+  chainMode: "stub" | "viem";
   certPageBase: string;
   demoMode: boolean;
   dataDir: string;
   gatewayPk: Hex;
   uploadLimitBytes: number;
+}
+
+const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
+
+/** Alamat kontrak dari env (isi H3 dari B), fallback addresses.testnet.json. */
+function resolveAddresses(): ViemAddresses {
+  const c = addresses.contracts;
+  return {
+    registry: (process.env.ADDR_REGISTRY ?? c.registry) as `0x${string}`,
+    certificate: (process.env.ADDR_CERTIFICATE ?? c.certificate) as `0x${string}`,
+    vault: (process.env.ADDR_VAULT ?? c.vault) as `0x${string}`,
+    challengeManager: (process.env.ADDR_CHALLENGE ?? c.challengeManager) as `0x${string}`,
+    mockUSDT: (process.env.ADDR_MOCKUSDT ?? c.mockUSDT) as `0x${string}`,
+  };
 }
 
 export function loadConfig(): Config {
@@ -55,10 +72,17 @@ export function loadConfig(): Config {
     // eslint-disable-next-line no-console
     console.warn("[gateway] GATEWAY_PK tidak diset — memakai kunci EFEMERAL (dev saja).");
   }
+  // Mode chain: eksplisit CHAIN_MODE, atau auto = viem bila alamat Certificate terisi.
+  const addrCert = process.env.ADDR_CERTIFICATE ?? addresses.contracts.certificate;
+  const chainMode =
+    (process.env.CHAIN_MODE as "stub" | "viem" | undefined) ??
+    (addrCert && addrCert !== ZERO_ADDR ? "viem" : "stub");
   return {
     port: Number(process.env.GATEWAY_PORT ?? 8787),
     engineUrl: process.env.ENGINE_URL ?? "http://localhost:8100",
     chainId: Number(process.env.CHAIN_ID ?? 1952),
+    rpcUrl: process.env.RPC_URL ?? "https://testrpc.xlayer.tech",
+    chainMode,
     certPageBase: process.env.CERT_PAGE_BASE || "https://cachet.local/cert-page",
     demoMode: process.env.DEMO_MODE === "1",
     dataDir: process.env.GATEWAY_DATA_DIR ?? resolve(__dirname, "../data"),
@@ -81,10 +105,19 @@ export function buildDeps(cfg: Config): Deps {
     facilitator: facilitatorUrl ? new HttpFacilitator(facilitatorUrl) : undefined,
   };
 
+  const chain: ChainClient =
+    cfg.chainMode === "viem"
+      ? new ViemChainClient({
+          rpcUrl: cfg.rpcUrl,
+          chainId: cfg.chainId,
+          gatewayPk: cfg.gatewayPk,
+          addresses: resolveAddresses(),
+        })
+      : new StubChainClient();
+
   return {
     engine: new HttpEngineClient(cfg.engineUrl),
-    // PR-3: chain = stub. A5: ganti ke ViemChainClient(addresses, rpc, pk).
-    chain: new StubChainClient(),
+    chain,
     signer,
     store: new Store(cfg.dataDir),
     certPageBase: cfg.certPageBase,

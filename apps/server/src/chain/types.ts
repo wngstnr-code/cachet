@@ -32,6 +32,9 @@ export interface CertData {
 }
 
 export interface ChainClient {
+  // Persiapan sekali-jalan (viem: approve payToken ke Vault). Stub: no-op.
+  ensureReady?(): Promise<void>;
+
   // Parameter (baca dari chain di impl nyata — JANGAN hardcode di gateway)
   fraudBondAmount(): Promise<bigint>;
   quotePremium(declaredValue: bigint): Promise<bigint>;

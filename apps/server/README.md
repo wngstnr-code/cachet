@@ -58,7 +58,31 @@ E2e nyata engine(Python) + gateway(TS) + stub: verify(ORIGINAL, premi 2%,
 tertandatangani) → mint(cert_id 1) → get_cert(PENDING) → **mint ulang gambar sama →
 NEAR_DUP 409** (mint pertama menyemai registry). 25 test unit/integrasi hijau.
 
-## Belum di PR ini (menyusul)
+## Chain mode: stub vs viem (A5)
 
-- **PR-4:** x402 payment guard + MCP server (`apps/mcp-server`).
-- **A5:** `ViemChainClient` (baca/tulis on-chain), swap dari stub; deploy publik.
+`ChainClient` punya dua implementasi, dipilih `CHAIN_MODE` (auto = `viem` bila
+`ADDR_CERTIFICATE` terisi non-nol, selain itu `stub`):
+
+- **`stub`** (`chain/stub.ts`) — in-memory, meniru aturan kontrak. Untuk test & dev.
+- **`viem`** (`chain/viem.ts`) — on-chain nyata via viem. Baca param dari chain
+  (`quotePremium`/`fraudBondAmount`/`waitingPeriod`), `registerAndMint` atomik,
+  `certData`/`isCoverageActive`/`ownerOf`, `challenge`. `ensureReady()` approve
+  payToken ke Vault sekali (maxUint256) saat start.
+
+Env viem: `CHAIN_MODE=viem`, `RPC_URL`, `CHAIN_ID`, `GATEWAY_PK`, `ADDR_REGISTRY`/
+`ADDR_CERTIFICATE`/`ADDR_VAULT`/`ADDR_CHALLENGE`/`ADDR_MOCKUSDT` (isi H3 dari B).
+
+### Rehearsal integrasi lokal (tanpa testnet)
+
+`scripts/local-anvil-e2e.sh` mendeploy kontrak B ke anvil lokal (chain-id 1952) dan
+menjalankan gateway `CHAIN_MODE=viem` terhadapnya — menutup celah E3 sebelum H5.
+
+**Terverifikasi (22 Jul):** verify (premi dari chain) → `registerAndMint` on-chain
+(cert nyata, `certCount=1`, `ownerOf`=creator) → get_cert PENDING → tunggu waiting
+period → **ACTIVE** (isCoverageActive on-chain) → challenge buka gugatan. 34 test
+unit (stub) tetap hijau.
+
+## Belum di PR ini (menyusul, sebagian tunggu B deploy testnet)
+
+- Deploy engine+gateway ke host publik HTTPS · smoke test bersama Wangsit di testnet
+  (§6) · wire facilitator x402 nyata (`X402_FACILITATOR_URL`) · registrasi ASP okx.ai.
