@@ -70,35 +70,42 @@ export function rpcErrorView(certId: string): string {
 }
 
 // ── Halaman sertifikat ─────────────────────────────────────────────────
-const STATUS_TEXT: Record<CertStatus, string> = {
-  ACTIVE: "Coverage active",
-  WAITING: "Waiting period",
-  NOT_INSURABLE: "Not insurable",
-  REVOKED: "Revoked",
-  EXPIRED: "Coverage expired",
-};
-
-function statusNote(c: CertView, status: CertStatus): string {
+/** Baris STATUS: format identik dengan baris kv lain — kata status (mono,
+ *  berwarna semantik) + aside italic singkat + link bukti bila ada. */
+function statusRow(c: CertView, status: CertStatus): string {
+  let word: string;
+  let aside = "";
+  let link = "";
   switch (status) {
+    case "ACTIVE":
+      word = "Coverage active";
+      break;
     case "WAITING":
-      return `Coverage becomes active on ${fmtDateTime(c.coverageStart)}. A challenge opened
-              before then ends without a payout — the waiting period exists precisely because
-              a known dispute should not be insurable.`;
+      word = "Waiting period";
+      aside = `coverage active from ${fmtDateTime(c.coverageStart)}`;
+      break;
     case "REVOKED": {
+      word = "Revoked";
+      aside = "lost a challenge; claim paid to holder at resolution";
       const lost = c.challenges.find((ch) => ch.status === ChallengeStatus.UpheldChallengerWon);
-      const link = lost?.resolvedTx
-        ? ` <a class="ext" href="${explorerTx(lost.resolvedTx)}" target="_blank" rel="noopener">View the ruling transaction</a>.`
-        : "";
-      return `This certificate lost a challenge and is permanently revoked. Any claim was paid
-              to the holder at resolution.${link}`;
+      if (lost?.resolvedTx) {
+        link = ` <a class="ext" href="${explorerTx(lost.resolvedTx)}" target="_blank" rel="noopener">view ruling</a>`;
+      }
+      break;
     }
     case "EXPIRED":
-      return `The coverage window ended on ${fmtDate(c.coverageEnd)}. The first-seen record below remains valid.`;
+      word = "Coverage expired";
+      aside = `ended ${fmtDate(c.coverageEnd)}; the first-seen record remains valid`;
+      break;
     case "NOT_INSURABLE":
-      return `This certificate records first-seen only — it carries no coverage.`;
-    case "ACTIVE":
-      return "";
+      word = "Not insurable";
+      aside = "records first-seen only, carries no coverage";
+      break;
   }
+  return `<div><span class="label">Status</span>
+    <div class="value"><span class="status-word" data-status="${status}">${word}</span>${link}
+      ${aside ? `<span class="aside">${aside}</span>` : ""}
+    </div></div>`;
 }
 
 function challengeLabel(ch: ChallengeRow): string {
@@ -143,7 +150,6 @@ function challengeRows(c: CertView): string {
 
 export function certView(c: CertView, imageURL: string | null): string {
   const status = deriveStatus(c);
-  const note = statusNote(c, status);
 
   const artwork = imageURL
     ? `<img src="${esc(imageURL)}" alt="Certified asset for certificate #${c.certId}" />
@@ -158,11 +164,9 @@ export function certView(c: CertView, imageURL: string | null): string {
     <div class="hero">
       <figure class="artwork ${status === "REVOKED" ? "is-revoked" : ""}">${artwork}</figure>
 
-      <div>
-        <span class="badge" data-status="${status}">${STATUS_TEXT[status]}</span>
-        ${note ? `<p class="status-note">${note}</p>` : ""}
-
+      <div class="certmeta">
         <div class="kv">
+          ${statusRow(c, status)}
           <div><span class="label">Certificate #</span><div class="value">${c.certId}</div></div>
           <div><span class="label">Declared value</span><div class="value">${fmtUSDT(c.declaredValue)} USDT</div></div>
           <div><span class="label">Coverage period</span>
