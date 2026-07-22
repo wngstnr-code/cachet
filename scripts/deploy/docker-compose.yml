@@ -1,0 +1,62 @@
+# Cachet off-chain (Person A) — engine + gateway + watch dalam satu mesin.
+# Jalankan dari folder ini:  docker compose up --build -d
+#
+# Konfigurasi diambil dari root .env (RPC/ADDR_*/GATEWAY_PK/CHAIN_MODE/X402_*).
+# Untuk deployment yang DILISTING: pastikan X402_BYPASS=0 dan DEMO_MODE=0 di .env,
+# dan set X402_FACILITATOR_URL setelah dapat dari okx.ai.
+
+name: cachet
+
+services:
+  engine:
+    build:
+      context: ../../services/engine
+      # ML/CLIP nyata: tambahkan `args: { WITH_ML: "1" }` + set ENGINE_EMBEDDER=clip.
+    environment:
+      ENGINE_PORT: "8100"
+      ENGINE_EMBEDDER: ${ENGINE_EMBEDDER:-fake}
+      INDEX_PATH: /data/index
+    volumes:
+      - engine-data:/data
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: ../..                 # ROOT: gateway butuh packages/contracts-abi
+      dockerfile: apps/server/Dockerfile
+    env_file:
+      - ../../.env                   # RPC_URL, ADDR_*, GATEWAY_PK, CHAIN_ID, X402_*
+    environment:
+      ENGINE_URL: http://engine:8100 # nama service, bukan localhost
+      GATEWAY_PORT: "8787"
+      GATEWAY_DATA_DIR: /data
+    ports:
+      - "8787:8787"                  # taruh di belakang reverse-proxy HTTPS
+    volumes:
+      - gateway-data:/data
+    depends_on:
+      - engine
+    restart: unless-stopped
+
+  watch:
+    build:
+      context: ../../services/watch
+    env_file:
+      - ../../.env                   # CRON_SCHEDULE, WEBHOOK_URL
+    environment:
+      ENGINE_URL: http://engine:8100
+      WATCH_PORT: "8795"
+      WATCH_SUBSCRIPTIONS_FILE: /gwdata/gateway.json  # store gateway (read-only)
+      WATCH_DATA_DIR: /data
+    volumes:
+      - gateway-data:/gwdata         # volume yang sama dgn gateway → baca subscriptions
+      - watch-data:/data
+    depends_on:
+      - engine
+      - gateway
+    restart: unless-stopped
+
+volumes:
+  engine-data: {}
+  gateway-data: {}
+  watch-data: {}
