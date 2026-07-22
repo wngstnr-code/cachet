@@ -14,6 +14,15 @@ importers:
       '@fastify/rate-limit':
         specifier: ^10.2.0
         version: 10.3.0
+      '@okxweb3/x402-core':
+        specifier: 0.1.0
+        version: 0.1.0
+      '@okxweb3/x402-evm':
+        specifier: 0.2.1
+        version: 0.2.1(typescript@5.9.3)
+      '@okxweb3/x402-fastify':
+        specifier: 0.1.1
+        version: 0.1.1(fastify@5.10.0)
       dotenv:
         specifier: ^16.4.5
         version: 16.6.1
@@ -22,7 +31,7 @@ importers:
         version: 5.10.0
       viem:
         specifier: ^2.21.0
-        version: 2.55.5(typescript@5.9.3)
+        version: 2.55.5(typescript@5.9.3)(zod@3.25.76)
     devDependencies:
       '@types/node':
         specifier: ^22.9.0
@@ -378,6 +387,17 @@ packages:
   '@noble/hashes@1.8.0':
     resolution: {integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==}
     engines: {node: ^14.21.3 || >=16}
+
+  '@okxweb3/x402-core@0.1.0':
+    resolution: {integrity: sha512-eXpZ51F3quf6GlDw/zwtBzirSCo9BRhdbWy4ipEoooyXE9VRpi/pRQgevKROyjNCPBAW/zpTZkqoUGfvtpyoTA==}
+
+  '@okxweb3/x402-evm@0.2.1':
+    resolution: {integrity: sha512-wdkMaoQS3dy06vQQB+a6PzBoBb5nIXTZKEYLYzmq+xtRjc+F/QzQ9dBM2+FnI31TDwN/CdI1teaPWwrcy/7LxA==}
+
+  '@okxweb3/x402-fastify@0.1.1':
+    resolution: {integrity: sha512-zuAMVMLk0heOkd1hTGzU/49UmNsXMF38N+Bfaj0Biv+PajUKpPXlLiuGojh3XPWxqOpacWef+XxJYVpEIboBhQ==}
+    peerDependencies:
+      fastify: ^5.0.0
 
   '@pinojs/redact@0.4.0':
     resolution: {integrity: sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg==}
@@ -951,6 +971,9 @@ packages:
       utf-8-validate:
         optional: true
 
+  zod@3.25.76:
+    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+
 snapshots:
 
   '@adraffy/ens-normalize@1.11.1': {}
@@ -1145,6 +1168,25 @@ snapshots:
 
   '@noble/hashes@1.8.0': {}
 
+  '@okxweb3/x402-core@0.1.0':
+    dependencies:
+      zod: 3.25.76
+
+  '@okxweb3/x402-evm@0.2.1(typescript@5.9.3)':
+    dependencies:
+      '@okxweb3/x402-core': 0.1.0
+      viem: 2.55.5(typescript@5.9.3)(zod@3.25.76)
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - bufferutil
+      - typescript
+      - utf-8-validate
+
+  '@okxweb3/x402-fastify@0.1.1(fastify@5.10.0)':
+    dependencies:
+      '@okxweb3/x402-core': 0.1.0
+      fastify: 5.10.0
+
   '@pinojs/redact@0.4.0': {}
 
   '@rollup/rollup-android-arm-eabi@4.62.2':
@@ -1281,9 +1323,10 @@ snapshots:
       loupe: 3.2.1
       tinyrainbow: 1.2.0
 
-  abitype@1.2.3(typescript@5.9.3):
+  abitype@1.2.3(typescript@5.9.3)(zod@3.25.76):
     optionalDependencies:
       typescript: 5.9.3
+      zod: 3.25.76
 
   abstract-logging@2.0.1: {}
 
@@ -1480,7 +1523,7 @@ snapshots:
 
   on-exit-leak-free@2.1.2: {}
 
-  ox@0.14.31(typescript@5.9.3):
+  ox@0.14.31(typescript@5.9.3)(zod@3.25.76):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/ciphers': 1.3.0
@@ -1488,7 +1531,7 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)
+      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76)
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 5.9.3
@@ -1628,15 +1671,15 @@ snapshots:
 
   undici-types@6.21.0: {}
 
-  viem@2.55.5(typescript@5.9.3):
+  viem@2.55.5(typescript@5.9.3)(zod@3.25.76):
     dependencies:
       '@noble/curves': 1.9.1
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)
+      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76)
       isows: 1.0.7(ws@8.21.0)
-      ox: 0.14.31(typescript@5.9.3)
+      ox: 0.14.31(typescript@5.9.3)(zod@3.25.76)
       ws: 8.21.0
     optionalDependencies:
       typescript: 5.9.3
@@ -1713,3 +1756,5 @@ snapshots:
       stackback: 0.0.2
 
   ws@8.21.0: {}
+
+  zod@3.25.76: {}

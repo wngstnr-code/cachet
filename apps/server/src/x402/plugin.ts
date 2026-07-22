@@ -1,52 +1,23 @@
-/**
- * Hook Fastify penegak x402. Berjalan di onRequest (SEBELUM body 15 MB diparse)
- * → 402 murah untuk permintaan tanpa bayar. Endpoint gratis dilewati.
- *
- * Alur: harga? tidak → lewat. bypass → lewat. tanpa X-PAYMENT → 402 +
- * PAYMENT-REQUIRED. ada X-PAYMENT → verifikasi facilitator → lewat / 402.
- */
+/** Wrapper tipis middleware x402 v2 resmi OKX untuk Fastify. */
 
 import type { FastifyInstance } from "fastify";
+import { paymentMiddleware, x402ResourceServer } from "@okxweb3/x402-fastify";
+import type { FacilitatorClient } from "@okxweb3/x402-core/server";
+import { ExactEvmScheme } from "@okxweb3/x402-evm/exact/server";
 
-import type { Facilitator } from "./guard.js";
-import { describe, priceFor } from "./prices.js";
-import { buildRequirements, paymentRequiredPayload, type X402Settings } from "./requirements.js";
+import { buildPaymentRoutes, type X402RouteSettings } from "./routes.js";
 
-export interface X402Options extends X402Settings {
+export interface X402Options extends X402RouteSettings {
   bypass: boolean;
-  facilitator?: Facilitator;
+  facilitator?: FacilitatorClient;
 }
 
 export function registerX402(app: FastifyInstance, opts: X402Options): void {
-  app.addHook("onRequest", async (req, reply) => {
-    const path = req.url.split("?")[0];
-    const price = priceFor(req.method, path);
-    if (price === null) return; // endpoint gratis
-    if (opts.bypass) return; // dev/e2e (X402_BYPASS=1)
+  if (opts.bypass) return;
+  if (!opts.facilitator) {
+    throw new Error("x402 aktif tetapi OKX facilitator tidak dikonfigurasi");
+  }
 
-    const reqs = buildRequirements(opts, path, price, describe(req.method, path));
-    const xPayment = req.headers["x-payment"] as string | undefined;
-
-    if (!xPayment) {
-      const { json, header } = paymentRequiredPayload([reqs]);
-      reply.header("PAYMENT-REQUIRED", header);
-      return reply.code(402).send(json);
-    }
-
-    if (!opts.facilitator) {
-      // Ada bukti bayar tapi tak ada cara verifikasi → tolak jujur, jangan asal terima.
-      const { json, header } = paymentRequiredPayload([reqs]);
-      reply.header("PAYMENT-REQUIRED", header);
-      return reply.code(402).send({ ...json, error: "no facilitator configured to verify payment" });
-    }
-
-    const out = await opts.facilitator.verifyAndSettle(xPayment, reqs);
-    if (!out.ok) {
-      const { json, header } = paymentRequiredPayload([reqs]);
-      reply.header("PAYMENT-REQUIRED", header);
-      return reply.code(402).send({ ...json, error: out.reason ?? "payment invalid" });
-    }
-    if (out.responseHeader) reply.header("PAYMENT-RESPONSE", out.responseHeader);
-    // lolos → handler jalan
-  });
+  const server = new x402ResourceServer(opts.facilitator).register(opts.network, new ExactEvmScheme());
+  paymentMiddleware(app, buildPaymentRoutes(opts), server);
 }

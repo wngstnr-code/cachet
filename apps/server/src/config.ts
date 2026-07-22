@@ -2,16 +2,19 @@
  * Konfigurasi gateway dari .env ROOT monorepo (§6, §8.1) — default tiap tool tidak
  * menunjuk ke root, jadi kita resolusi eksplisit ke ../../.env.
  *
- * buildDeps() merakit dependency PRODUKSI (engine HTTP + chain stub + signer).
- * Chain masih STUB di PR-3; viem menyusul di A5 (swap satu baris di sini).
+ * buildDeps() merakit dependency produksi: engine HTTP, chain client, signer,
+ * storage, dan seller middleware OKX x402 v2.
  */
 
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import dotenv from "dotenv";
+import { isAddress } from "viem";
 import { generatePrivateKey } from "viem/accounts";
 import type { Hex } from "viem";
+import { OKXFacilitatorClient } from "@okxweb3/x402-core";
+import type { Network } from "@okxweb3/x402-core/types";
 
 import { addresses } from "@cachet/contracts-abi";
 
@@ -21,7 +24,6 @@ import { ViemChainClient, type ViemAddresses } from "./chain/viem.js";
 import { HttpEngineClient, type EngineClient } from "./engine/client.js";
 import { VerdictSigner } from "./signer.js";
 import { Store } from "./store.js";
-import { HttpFacilitator } from "./x402/guard.js";
 import type { X402Options } from "./x402/plugin.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
@@ -52,6 +54,71 @@ export interface Config {
 }
 
 const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
+const X_LAYER_TESTNET = "eip155:1952" as const;
+const OKX_PAYMENT_BASE_URL = "https://web3.okx.com";
+
+function requireHttpsUrl(value: string, name: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${name} harus berupa URL valid`);
+  }
+  if (url.protocol !== "https:") throw new Error(`${name} wajib memakai HTTPS`);
+  return url.toString().replace(/\/$/, "");
+}
+
+/** Muat konfigurasi seller x402 tanpa pernah mencetak nilai credential. */
+export function loadX402Options(
+  env: NodeJS.ProcessEnv,
+  defaults: { chainId: number; payTo: `0x${string}` },
+): X402Options {
+  const bypass = env.X402_BYPASS === "1";
+  const network = (env.X402_NETWORK ?? `eip155:${defaults.chainId}`) as Network;
+  const payTo = (env.X402_PAY_TO ?? defaults.payTo) as `0x${string}`;
+  const resourceBaseRaw = env.X402_RESOURCE_BASE ?? "http://localhost:8787";
+
+  if (!isAddress(payTo)) throw new Error("X402_PAY_TO harus berupa alamat EVM valid");
+
+  if (bypass) {
+    return {
+      bypass: true,
+      network,
+      payTo,
+      resourceBase: resourceBaseRaw.replace(/\/$/, ""),
+    };
+  }
+
+  if (network !== X_LAYER_TESTNET) {
+    throw new Error(`X402_NETWORK untuk deployment ini wajib ${X_LAYER_TESTNET}`);
+  }
+  const resourceBase = requireHttpsUrl(resourceBaseRaw, "X402_RESOURCE_BASE");
+  const baseUrl = requireHttpsUrl(env.OKX_BASE_URL ?? OKX_PAYMENT_BASE_URL, "OKX_BASE_URL");
+  if (baseUrl !== OKX_PAYMENT_BASE_URL) {
+    throw new Error(`OKX_BASE_URL untuk deployment ini wajib ${OKX_PAYMENT_BASE_URL}`);
+  }
+
+  const apiKey = env.OKX_API_KEY;
+  const secretKey = env.OKX_SECRET_KEY;
+  const passphrase = env.OKX_PASSPHRASE;
+  if (!apiKey || !secretKey || !passphrase) {
+    throw new Error("OKX_API_KEY, OKX_SECRET_KEY, dan OKX_PASSPHRASE wajib diisi bersama saat x402 aktif");
+  }
+
+  return {
+    bypass: false,
+    network,
+    payTo,
+    resourceBase,
+    facilitator: new OKXFacilitatorClient({
+      apiKey,
+      secretKey,
+      passphrase,
+      baseUrl,
+      syncSettle: true,
+    }),
+  };
+}
 
 /** Alamat kontrak dari env (isi H3 dari B), fallback addresses.testnet.json. */
 function resolveAddresses(): ViemAddresses {
@@ -93,17 +160,10 @@ export function loadConfig(): Config {
 
 export function buildDeps(cfg: Config): Deps {
   const signer = new VerdictSigner(cfg.gatewayPk, cfg.chainId);
-  const facilitatorUrl = process.env.X402_FACILITATOR_URL;
-
-  const x402: X402Options = {
-    // Bypass di dev (X402_BYPASS=1) atau DEMO_MODE. WAJIB false di listing.
-    bypass: process.env.X402_BYPASS === "1" || cfg.demoMode,
-    network: process.env.X402_NETWORK ?? `eip155:${cfg.chainId}`,
-    asset: process.env.X402_ASSET ?? (addresses.payToken.address as string),
-    // Penerima pembayaran x402 = revenue gateway; default alamat signer.
-    payTo: process.env.X402_PAY_TO ?? signer.address,
-    facilitator: facilitatorUrl ? new HttpFacilitator(facilitatorUrl) : undefined,
-  };
+  const x402 = loadX402Options(
+    { ...process.env, X402_BYPASS: cfg.demoMode ? "1" : process.env.X402_BYPASS },
+    { chainId: cfg.chainId, payTo: signer.address },
+  );
 
   const chain: ChainClient =
     cfg.chainMode === "viem"

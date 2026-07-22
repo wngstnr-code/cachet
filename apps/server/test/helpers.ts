@@ -33,6 +33,7 @@ export function engineResult(verdict: EngineQuery["verdict"], over: Partial<Engi
 
 export class FakeEngineClient implements EngineClient {
   public indexed: { source: string; uri: string }[] = [];
+  public queryCount = 0;
   constructor(private responder: (raw: Uint8Array) => EngineQuery = () => engineResult("ORIGINAL")) {}
 
   async hash(raw: Uint8Array): Promise<EngineHash> {
@@ -40,6 +41,7 @@ export class FakeEngineClient implements EngineClient {
     return { asset_sha256: q.asset_sha256, phashes: q.phashes, embedding_commit: q.embedding_commit };
   }
   async query(raw: Uint8Array): Promise<EngineQuery> {
+    this.queryCount += 1;
     return this.responder(raw);
   }
   async index(_raw: Uint8Array, source: string, uri: string) {
@@ -73,8 +75,8 @@ export async function makeApp(opts: {
     x402: {
       bypass: true, // default: route test tak perlu bayar
       network: "eip155:1952",
-      asset: "0x9ad14e783DCe270BE1214153E940aa686f91fa40",
       payTo: signer.address,
+      resourceBase: "https://api.cachet.test",
       ...opts.x402,
     },
   };

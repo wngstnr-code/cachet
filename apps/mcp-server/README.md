@@ -17,9 +17,10 @@ gateway REST (`apps/server`) — seluruh logika ada di gateway; MCP hanya adapto
 ## Pembayaran x402
 
 MCP server **tidak** membayar. Bila gateway membalas `402`, tool mengembalikan
-payment requirements (header `PAYMENT-REQUIRED`) + hint; **klien pemanggil** yang
-membayar via x402 (lihat skill `okx-agent-payments-protocol`) lalu memanggil ulang
-tool. Untuk dev/e2e, jalankan gateway dengan `X402_BYPASS=1` agar tool langsung lolos.
+payment requirements x402 v2 (header `PAYMENT-REQUIRED`) + hint; **klien
+pemanggil** yang menandatangani pembayaran lalu retry dengan header
+`PAYMENT-SIGNATURE`. Untuk dev/e2e, jalankan gateway dengan `X402_BYPASS=1` agar
+tool langsung lolos.
 
 ## Jalankan
 
