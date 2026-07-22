@@ -1,0 +1,18 @@
+# Dependency INTI — wajib terpasang, mengurung tier deterministik + API.
+# Semua ini punya wheel Python 3.13. Dependency ML berat (torch/open_clip/faiss/
+# c2pa) ada terpisah di requirements-ml.txt karena wheel-nya belum tentu ada di
+# 3.13 — engine tetap jalan & seluruh test lulus tanpa mereka (embedding pakai
+# FakeEmbedder, vector index fallback numpy, c2pa fallback JUMBF).
+
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+python-dotenv>=1.0
+pillow>=10.3
+imagehash>=4.3
+numpy>=1.26
+scipy>=1.11        # dipakai imagehash.whash
+PyWavelets>=1.5    # dipakai imagehash.whash
+pycryptodome>=3.20 # keccak256 (Ethereum), bukan sha3 standar
+httpx>=0.27        # TestClient
+pytest>=8.0

@@ -1,0 +1,25 @@
+{
+  "name": "@cachet/watch",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cachet Watch worker (A4): re-scan registry vs aset diawasi → alert + draft challenge.",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "rescan": "tsx src/rescan.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "fastify": "^5.1.0",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

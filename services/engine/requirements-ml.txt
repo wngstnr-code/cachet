@@ -1,0 +1,17 @@
+# Dependency ML PRODUKSI — best-effort, mengganti FakeEmbedder → CLIP nyata.
+# Engine + SELURUH test TIDAK bergantung pada file ini (embedding fake, vector
+# index numpy, c2pa fallback JUMBF).
+#
+# ⚠️ STATUS 22 Jul (py3.13, sesi #2): `pip install -r requirements-ml.txt` GAGAL
+#    resolve di Python 3.13 — paket `c2pa` menarik `py3exiv2` yang gagal build
+#    (metadata-generation-failed). Dampak ke A1 = NOL. Keputusan ditunda ke A5:
+#    (a) turun ke Python 3.12 untuk service produksi, atau
+#    (b) pasang torch+open_clip saja (tanpa c2pa → tetap pakai fallback JUMBF),
+#        instal faiss-cpu bila ada wheel; kalau tidak, vector index numpy cukup.
+#    Jangan blokir A1/A3 stub karena ini.
+
+torch>=2.2            # CPU build
+open_clip_torch>=2.24 # ViT-B/32
+faiss-cpu>=1.8        # opsional; tanpa ini vector index fallback ke numpy
+# c2pa>=0.5           # ⚠️ py3exiv2 gagal build di 3.13 — aktifkan hanya di 3.12;
+#                     #    MVP membaca C2PA lewat fallback JUMBF tanpa lib ini.
