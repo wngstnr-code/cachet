@@ -1,0 +1,256 @@
+/* Cachet cert page — "refined editorial document".
+   Acuan: mockup Stitch yang disetujui (22 Jul). Prinsip: kertas datar tanpa
+   card, hairline rules, serif utk heading, mono utk semua data on-chain,
+   SATU aksen (hijau tua) hanya di badge + link. */
+
+:root {
+  --paper: #faf8f5;
+  --ink: #2a2622;
+  --muted: #8a8378;
+  --hairline: #e5e0d8;
+  --accent: #1f4d3a;
+  --accent-ink: #f2efe9;
+  --revoked: #7a2e2e;
+  --expired: #8a6d1f;
+  --neutral: #6b655c;
+  --serif: "Source Serif 4 Variable", Georgia, serif;
+  --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { background: var(--paper); }
+
+body {
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 0 32px 64px;
+}
+
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+
+/* ── Header ─────────────────────────────────────────────────────────── */
+.masthead {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 28px 0 20px;
+  border-bottom: 1px solid var(--hairline);
+  margin-bottom: 48px;
+}
+.masthead .brand {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--ink);
+  text-decoration: none;
+}
+.masthead .sep { color: var(--muted); }
+.masthead h1 {
+  font-family: var(--serif);
+  font-weight: 600;
+  font-size: 20px;
+}
+.masthead .net {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ── Label small-caps ───────────────────────────────────────────────── */
+.label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ── Hero dua kolom asimetris ───────────────────────────────────────── */
+.hero {
+  display: grid;
+  grid-template-columns: 55fr 45fr;
+  gap: 48px;
+  margin-bottom: 64px;
+}
+
+.artwork img { width: 100%; height: auto; display: block; }
+.artwork figcaption {
+  margin-top: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  word-break: break-all;
+}
+.artwork .placeholder {
+  border: 1px solid var(--hairline);
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+.artwork .placeholder .uri {
+  display: block;
+  margin-top: 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+  word-break: break-all;
+}
+.artwork.is-revoked img { filter: grayscale(0.85) contrast(0.92); }
+
+/* ── Badge status: satu-satunya elemen pill ─────────────────────────── */
+.badge {
+  display: inline-block;
+  padding: 6px 16px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  background: var(--accent);
+  color: var(--accent-ink);
+  margin-bottom: 8px;
+}
+.badge[data-status="REVOKED"] { background: var(--revoked); }
+.badge[data-status="EXPIRED"] { background: var(--expired); }
+.badge[data-status="NOT_INSURABLE"] { background: var(--neutral); }
+.badge[data-status="WAITING"] {
+  background: transparent;
+  color: var(--expired);
+  box-shadow: inset 0 0 0 1px var(--expired);
+}
+.status-note { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+.status-note a { color: inherit; }
+
+/* ── Tumpukan key-value dengan hairline ─────────────────────────────── */
+.kv { border-top: 1px solid var(--hairline); margin-top: 16px; }
+.kv > div { padding: 14px 0; border-bottom: 1px solid var(--hairline); }
+.kv .value {
+  font-family: var(--mono);
+  font-size: 14px;
+  margin-top: 4px;
+  word-break: break-all;
+}
+.kv .aside { font-size: 12px; color: var(--muted); font-style: italic; margin-left: 6px; }
+
+.copy-btn {
+  border: none;
+  background: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0 4px;
+}
+.copy-btn:hover { text-decoration: underline; }
+
+/* ── Section ────────────────────────────────────────────────────────── */
+section { margin-bottom: 56px; }
+section > h2 {
+  font-family: var(--serif);
+  font-weight: 600;
+  font-size: 22px;
+  margin-bottom: 16px;
+}
+
+/* ── Tabel riwayat gugatan ──────────────────────────────────────────── */
+table { width: 100%; border-collapse: collapse; }
+thead .label { text-align: left; padding: 0 16px 10px 0; }
+tbody td {
+  border-top: 1px solid var(--hairline);
+  padding: 12px 16px 12px 0;
+  font-size: 14px;
+  vertical-align: top;
+}
+td.mono, .mono { font-family: var(--mono); font-size: 13px; }
+.empty-state { border-top: 1px solid var(--hairline); padding: 16px 0; color: var(--muted); font-size: 14px; }
+
+.ext::after { content: " \2197"; font-size: 11px; }
+
+/* ── Verify independently ───────────────────────────────────────────── */
+.verify-links { border-top: 1px solid var(--hairline); }
+.verify-links a {
+  display: block;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 14px;
+  text-decoration: none;
+}
+.verify-links a:hover { text-decoration: underline; }
+.verify-links .where { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-left: 8px; }
+
+/* ── Footer jujur (§7 — wajib utuh) ─────────────────────────────────── */
+.fineprint {
+  border-top: 1px solid var(--hairline);
+  padding-top: 20px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.fineprint .mono { font-size: 11px; }
+
+/* ── Root lookup ────────────────────────────────────────────────────── */
+.lookup { max-width: 480px; margin: 96px auto 0; }
+.lookup .brand {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+.lookup p { color: var(--muted); font-size: 14px; margin-bottom: 32px; }
+.lookup form { display: flex; gap: 0; border: 1px solid var(--ink); }
+.lookup input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 12px 14px;
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--ink);
+  outline: none;
+}
+.lookup button {
+  border: none;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 12px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.lookup button:hover { background: var(--accent); }
+.lookup .form-error { color: var(--revoked); font-size: 13px; margin-top: 10px; }
+
+/* ── Status halaman: loading / error / not found ────────────────────── */
+.page-status { margin: 96px auto; max-width: 480px; text-align: left; }
+.page-status h2 { font-family: var(--serif); font-size: 22px; margin-bottom: 12px; }
+.page-status p { color: var(--muted); font-size: 14px; margin-bottom: 16px; }
+
+.skeleton { animation: pulse 1.4s ease-in-out infinite; }
+.skeleton .bar { height: 14px; background: var(--hairline); margin-bottom: 14px; }
+.skeleton .bar.wide { width: 70%; }
+.skeleton .bar.narrow { width: 40%; }
+.skeleton .block { height: 280px; background: var(--hairline); margin-bottom: 20px; }
+@keyframes pulse { 50% { opacity: 0.45; } }
+
+/* ── Mobile: kolom hero ditumpuk, gambar duluan ─────────────────────── */
+@media (max-width: 720px) {
+  .page { padding: 0 20px 48px; }
+  .hero { grid-template-columns: 1fr; gap: 32px; }
+  .masthead { flex-wrap: wrap; }
+  .masthead .net { margin-left: 0; width: 100%; margin-top: 4px; }
+  tbody td { padding-right: 10px; }
+}
