@@ -1,0 +1,25 @@
+# Merge this site block into the host-owned Caddy configuration only after
+# `cachetprotocol.xyz` is active on Cloudflare and the Origin CA files exist.
+# Always run `caddy validate` before a graceful reload.
+
+api.cachetprotocol.xyz {
+	tls /etc/caddy/certs/cachetprotocol.xyz.crt /etc/caddy/certs/cachetprotocol.xyz.key
+	encode zstd gzip
+
+	request_body {
+		max_size 16MB
+	}
+
+	header {
+		Referrer-Policy "no-referrer"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		-Server
+	}
+
+	reverse_proxy 127.0.0.1:8787 {
+		health_uri /healthz
+		health_interval 30s
+		health_timeout 5s
+	}
+}

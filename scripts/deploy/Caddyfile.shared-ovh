@@ -1,0 +1,51 @@
+# Complete host Caddyfile for the shared SimpleArt + Cachet VPS.
+# Install to /etc/caddy/Caddyfile only after backing up the current file and
+# validating this candidate. Paths match the existing SimpleArt runbook.
+{
+	email admin@simpleartch.com
+	admin 127.0.0.1:2019
+}
+
+http://simpleartch.com, http://www.simpleartch.com, http://api.cachetprotocol.xyz {
+	redir https://{host}{uri} permanent
+}
+
+https://simpleartch.com, https://www.simpleartch.com {
+	tls /opt/simpleart/caddy/origin.crt /opt/simpleart/caddy/origin.key
+	encode zstd gzip
+
+	header {
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		-Server
+	}
+
+	request_body {
+		max_size 25MB
+	}
+
+	import /opt/simpleart/caddy/upstream.caddy
+}
+
+https://api.cachetprotocol.xyz {
+	tls /etc/caddy/certs/cachetprotocol.xyz.crt /etc/caddy/certs/cachetprotocol.xyz.key
+	encode zstd gzip
+
+	request_body {
+		max_size 16MB
+	}
+
+	header {
+		Referrer-Policy "no-referrer"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		-Server
+	}
+
+	reverse_proxy 127.0.0.1:8787 {
+		health_uri /healthz
+		health_interval 30s
+		health_timeout 5s
+	}
+}

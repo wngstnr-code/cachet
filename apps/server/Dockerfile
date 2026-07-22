@@ -1,15 +1,17 @@
-# Cachet Gateway (A3) — image produksi.
+# Cachet Gateway (A3) — image produksi non-root.
 #
 # ⚠️ BUILD CONTEXT = ROOT REPO (bukan apps/server), karena gateway bergantung pada
 #    packages/contracts-abi lewat `file:` dependency (monorepo). Contoh:
 #      docker build -f apps/server/Dockerfile -t cachet-gateway .
-#    (titik = root repo). docker-compose sudah mengatur ini.
+#    (titik = root repo). Untuk produksi, gunakan script build di bawah.
 #
-# COPY selektif (bukan `COPY apps/server .`) supaya node_modules host tidak ikut
-# dan tak perlu .dockerignore di root (root = zona bersama).
-FROM node:22-slim
+# COPY selektif (bukan `COPY apps/server .`) supaya node_modules host tidak ikut.
+# Production build memakai context minimal dari scripts/deploy/build-ovh-images.sh
+# agar `.env` dan file monorepo lain tidak pernah dikirim ke builder.
+# Tahap dependency dipisah agar cache pnpm tidak ikut ke image runtime.
+FROM node:22-bookworm-slim AS dependencies
 
-RUN corepack enable
+RUN corepack enable && corepack prepare pnpm@10.18.3 --activate
 WORKDIR /repo
 
 # tsconfig base + paket ABI (dibaca saat build; read-only, milik B).
@@ -20,14 +22,33 @@ COPY packages/contracts-abi/abi ./packages/contracts-abi/abi
 # Gateway: manifest + lockfile dulu (cache install), lalu source.
 COPY apps/server/package.json apps/server/pnpm-lock.yaml apps/server/tsconfig.json ./apps/server/
 WORKDIR /repo/apps/server
-RUN pnpm install
+RUN pnpm install --frozen-lockfile
 COPY apps/server/src ./src
 
+FROM node:22-bookworm-slim AS runtime
+
 ENV GATEWAY_PORT=8787 \
-    GATEWAY_DATA_DIR=/data
+    GATEWAY_DATA_DIR=/data \
+    NODE_ENV=production
+
+WORKDIR /repo/apps/server
+
+RUN groupadd --gid 10001 cachet \
+    && useradd --uid 10001 --gid cachet --shell /usr/sbin/nologin --create-home cachet \
+    && mkdir -p /data \
+    && chown cachet:cachet /data
+
+COPY --from=dependencies --chown=cachet:cachet /repo /repo
+
 EXPOSE 8787
 VOLUME ["/data"]
 
 # Konfigurasi (RPC/ADDR_*/GATEWAY_PK/CHAIN_MODE/X402_*) via env saat run — JANGAN
 # di-bake ke image. CHAIN_MODE auto=viem bila ADDR_CERTIFICATE terisi.
-CMD ["pnpm", "start"]
+USER 10001:10001
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=4 \
+  CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.GATEWAY_PORT||'8787')+'/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+
+# Jalankan binary tsx langsung; pnpm/corepack tidak diperlukan di image runtime.
+CMD ["./node_modules/.bin/tsx", "src/index.ts"]
