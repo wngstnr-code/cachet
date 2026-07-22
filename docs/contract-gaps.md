@@ -3,12 +3,16 @@
 > **Status:** per 22 Jul 2026, setelah B1/B2a/B2b + **enam** putaran audit.
 > Audit keenam memverifikasi ulang seluruh daftar ini terhadap kode terkini
 > (pasca commit `f1a54b4`, lantai parameter): **kategori B sudah tertutup**,
-> dan ditemukan gap baru — lihat kategori **G**.
+> dan ditemukan gap baru — kategori **G**. Tindak lanjut: **G1, G4, G5 kini
+> tertutup** (snapshot liveness + rapikan komentar + Ownable2Step; 164 test
+> hijau). **G2** siap tapi menunggu keputusan A+B (mengubah semantik masa
+> tunggu & merusak `DemoFlow` — lihat catatan di G2). G3 setelah deploy.
 > **Tujuan:** daftar jujur semua yang BELUM tertutup, supaya keputusannya diambil
 > sadar — bukan ditemukan juri.
 >
-> 160 test hijau, 21/21 mutasi tertangkap, coverage 99.6% baris. Angka itu
-> mengukur apakah kode yang ADA benar. Dokumen ini soal yang **tidak ada**.
+> 164 test hijau (pasca G1+G5), 21/21 mutasi tertangkap, coverage 99.6% baris.
+> Angka itu mengukur apakah kode yang ADA benar. Dokumen ini soal yang
+> **tidak ada**.
 
 Tiga dari lima audit menemukan bug di tempat yang sebelumnya dinyatakan aman.
 Polanya selalu sama: yang lolos bukan kode yang salah, tapi **cek yang tidak
@@ -82,13 +86,13 @@ konstanta (`ParamBelowFloor`), plus batas atas yang sudah ada sebelumnya.
 Ditemukan saat memverifikasi ulang kategori B. Polanya masih sama dengan lima
 audit sebelumnya: bukan kode yang salah, tapi **cek yang tidak pernah ditulis**.
 
-### G1. Perubahan `livenessWindow` berlaku surut ke gugatan terbuka 🟠
+### G1. Perubahan `livenessWindow` berlaku surut ke gugatan terbuka — ✅ TERTUTUP
 
-`resolve()` menghitung jendela dengan nilai `livenessWindow` **saat resolve**,
-bukan nilai saat gugatan dibuka:
+`resolve()` dulu menghitung jendela dengan nilai `livenessWindow` **saat
+resolve**, bukan nilai saat gugatan dibuka:
 
 ```solidity
-uint64 requiredUntil = c.openedAt + livenessWindow;   // nilai SEKARANG
+uint64 requiredUntil = c.openedAt + livenessWindow;   // nilai SEKARANG (LAMA)
 ```
 
 Konsekuensi dua arah, dua-duanya di jalur sah `onlyOwner`:
@@ -100,9 +104,13 @@ Konsekuensi dua arah, dua-duanya di jalur sah `onlyOwner`:
   dan sertifikat terkunci (`openChallengeOf`) selama itu. Digabung G2, ini bisa
   dipakai mendorong putusan melewati akhir coverage.
 
-**Usulan (murah, ~3 baris):** snapshot `livenessWindow` ke struct `Challenge`
-saat `challenge()`, dan `resolve()` memakai nilai snapshot itu. Perubahan
-parameter hanya berlaku untuk gugatan berikutnya.
+**Perbaikan (terpasang):** struct `Challenge` kini menyimpan `livenessSnapshot`,
+dibekukan ke nilai `livenessWindow` saat `challenge()`. `resolve()` memakai
+`c.openedAt + c.livenessSnapshot`. Perubahan parameter hanya berlaku untuk
+gugatan berikutnya. Murni internal `ChallengeManager` — **tidak menyentuh
+interface beku §3.1** (`getChallenge`/`IChallengeManager` tak berubah), jadi
+tanpa koordinasi lintas-orang. Dua test regresi (perpendek & perpanjang di
+tengah gugatan) hijau.
 
 ### G2. Jendela coverage dinilai saat RESOLVE, bukan saat gugatan dibuka 🟠
 
@@ -122,8 +130,22 @@ sebesar `livenessWindow` di ekor coverage. Digabung G1 (owner memperpanjang
 liveness saat gugatan terbuka), penyusutan ini bisa direkayasa.
 
 **Usulan:** nilai kelayakan coverage terhadap `c.openedAt` (saat gugatan
-dibuka), bukan saat resolve — butuh mengoper `openedAt` dari ChallengeManager
-ke Vault, atau snapshot kelayakan saat `challenge()`.
+dibuka), bukan saat resolve. Tanpa menyentuh `settleChallengeWon` (beku §3.1):
+Vault mencatat `openedAt` di `collectChallengeBond` (dipanggil sinkron dari
+`challenge()`, jadi `block.timestamp` di sana = openedAt) dan membacanya lagi
+saat settle — tidak perlu callback ke ChallengeManager, tidak perlu ubah tanda
+tangan fungsi.
+
+> **⚠️ Temuan saat menyiapkan perbaikan G2 (belum diputuskan):** menilai coverage
+> pada `openedAt` memperbaiki ekor coverage **tapi juga mengetatkan tepi depan**
+> — gugatan yang dibuka **selama masa tunggu** (sebelum `coverageStart`) jadi
+> tidak dibayar meski resolve mendarat setelah coverage aktif. Itu semantik yang
+> lebih benar (masa tunggu jadi berarti), **tapi merusak `DemoFlow`**: skenario
+> demo membuka gugatan tepat setelah mint (di dalam masa tunggu 10 detik yang
+> berjalan paralel dengan liveness 30 detik), lalu resolve setelah coverage
+> aktif → di semantik baru payout ke pembeli jadi NOL dan klimaks video gagal.
+> Perbaikannya kecil (buka gugatan setelah `coverageStart` di skrip + test demo),
+> tapi ini keputusan produk + deliverable bersama → **butuh sepakat A+B dulu.**
 
 ### G3. Bond penantang tidak dipisahkan dari kolam klaim 🟡
 
@@ -141,7 +163,7 @@ sini adalah **uang milik penantang**, bukan janji coverage operator.
 **Opsi:** earmark bond (saldo terpisah / akuntansi per-tujuan), atau terima dan
 dokumentasikan di disclosure + cert page.
 
-### G4. Komentar kode basi — bisa menyesatkan disclosure 🟡
+### G4. Komentar kode basi — bisa menyesatkan disclosure — ✅ TERTUTUP
 
 Dua tempat komentar bertentangan dengan kode terkini:
 - `CachetCertificate.setWaitingPeriod`: `@param v 0 diperbolehkan` — padahal
@@ -151,20 +173,34 @@ Dua tempat komentar bertentangan dengan kode terkini:
   wiring set-once. (Arahnya kebalikan: kode lebih ketat dari komentarnya.
   Tapi README/disclosure yang menyalin komentar ini akan salah dua arah.)
 
-**Usulan:** rapikan sebelum README ditulis — disclosure harus disalin dari
-kode, bukan dari komentar.
+**Perbaikan (terpasang):** kedua komentar diselaraskan dengan kode. NatSpec
+`setWaitingPeriod` kini menyatakan lantai 10 detik + plafon 30 hari (0 ditolak).
+Header `CachetGoverned` menuliskan kekuasaan owner yang sebenarnya pasca
+set-once: owner memilih wiring **sekali saat deploy** lalu terkunci, hanya bisa
+menyetel parameter dalam pagar — dan **tidak** bisa mengganti alamat
+gateway/resolver/ChallengeManager, mengubah logika, atau menarik dana. Hanya
+komentar; nol perubahan perilaku, 162 test tetap hijau.
 
-### G5. `Ownable` satu langkah + `renounceOwnership` terbuka 🟡
+### G5. `Ownable` satu langkah + `renounceOwnership` terbuka — ✅ TERTUTUP (transferOwnership)
 
-Kontrak memakai OZ `Ownable` biasa, bukan `Ownable2Step`. Dua jalur kaki
+Kontrak dulu memakai OZ `Ownable` biasa, bukan `Ownable2Step`. Dua jalur kaki
 tertembak: `transferOwnership` ke alamat salah ketik, atau `renounceOwnership`
 tak sengaja — dua-duanya membuat SEMUA setter parameter mati permanen
 (wiring memang sudah terkunci; yang hilang adalah kemampuan menyetel angka,
 termasuk rem darurat `maxDeclaredValue = 0`). Sistem tetap jalan dengan nilai
 saat itu — dampaknya sekelas C1, bukan pengurasan dana.
 
-**Opsi:** ganti ke `Ownable2Step` (~1 baris per kontrak) sebelum deploy, atau
-terima untuk testnet seperti C1.
+**Perbaikan (terpasang, sebelum deploy):** `CachetGoverned` kini mewarisi
+`Ownable2Step`. Satu titik ubah di base → keempat kontrak inti ikut. Pemilik
+baru WAJIB `acceptOwnership()`, jadi `transferOwnership` ke alamat salah ketik
+hanya menggantung sebagai `pendingOwner` tanpa memutus kendali. +2 test
+(transfer dua langkah & accept), 164 test hijau.
+
+**Residual yang diakui jujur:** `renounceOwnership` **tetap satu langkah**
+bawaan OZ — Ownable2Step tidak mengubahnya. Itu pemakaian eksplisit (bukan
+kecelakaan diam seperti typo transfer), jadi diterima; kalau mau ditutup total,
+override `renounceOwnership` agar revert (owner memang tak pernah perlu
+melepas kuasa — ia butuhnya untuk rem darurat `maxDeclaredValue = 0`).
 
 ---
 
@@ -265,15 +301,20 @@ ERC-8004, seasoning otomatis on-chain, zkML, C2PA anchoring penuh.
 
 - ~~B1–B5 batas bawah parameter~~ → ✅ tertutup di commit `f1a54b4`
   (lantai + `ParamBelowFloor`, test lantai hijau).
+- ~~G1 snapshot `livenessWindow` per gugatan~~ → ✅ tertutup (internal
+  `ChallengeManager`, tanpa ubah §3.1, +2 test regresi).
+- ~~G4 rapikan komentar basi~~ → ✅ tertutup (komentar saja, nol perubahan
+  perilaku).
+- ~~G5 `Ownable2Step`~~ → ✅ tertutup sebelum deploy (satu titik ubah di
+  `CachetGoverned`, +2 test; 164 test hijau). Residual `renounceOwnership`
+  satu langkah diakui di §G5.
 
 **Butuh keputusan kalian berdua:**
 
 | # | Pertanyaan | Biaya |
 |---|---|---|
-| G1 | Snapshot `livenessWindow` per gugatan? | ~3 baris + test |
-| G2 | Coverage dinilai saat gugatan dibuka, bukan saat resolve? | ~10 baris + test |
+| G2 | Coverage dinilai saat gugatan dibuka, bukan saat resolve? **Perbaikannya siap tanpa sentuh §3.1, tapi mengubah semantik masa tunggu & merusak `DemoFlow` (lihat catatan G2) → perlu sepakat + sesuaikan skrip/test demo.** | ~10 baris + test + patch demo |
 | G3 | Earmark bond penantang, atau cukup didokumentasikan? | sedang / 0 |
-| G5 | `Ownable2Step` sebelum deploy? | ~1 baris per kontrak |
 | C1 | Cadangan kunci resolver / multisig? | prosedur, bukan kode |
 | A1 | Siapa yang pegang resolver — bisa orang luar? | mencari orang |
 
@@ -282,10 +323,10 @@ ERC-8004, seasoning otomatis on-chain, zkML, C2PA anchoring penuh.
 - **E1 deploy testnet** — prioritas tertinggi (diverifikasi ulang audit keenam:
   `broadcast/` baru berisi MockUSDT, empat kontrak inti belum pernah menyentuh chain)
 - **E2 review Dien** atas PR #7
-- **G4 rapikan komentar basi** — sebelum README/disclosure ditulis
 - **A1 + D-list masuk README** dan disclosure listing
 
-**Saranku soal urutan:** G1+G2 layak dikerjakan sekarang — murah, satu tema
-(snapshot kondisi saat gugatan dibuka), dan menambal sisa lubang di mitigasi
-utama A1 yang tidak tertutup oleh lantai parameter. G3/G5 bahas setelah deploy —
+**Saranku soal urutan:** G1 & G4 sudah dikerjakan. G2 tinggal satu tema dengan
+G1 (snapshot kondisi saat gugatan dibuka) dan menambal sisa lubang di mitigasi
+utama A1 — tapi karena ia menggeser semantik masa tunggu dan merusak klimaks
+`DemoFlow`, ia butuh persetujuan A+B lebih dulu. G3/G5 bahas setelah deploy —
 karena E1 kemungkinan besar menghasilkan temuan yang mengubah prioritas.

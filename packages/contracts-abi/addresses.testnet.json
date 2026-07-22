@@ -1,8 +1,6 @@
 {
   "_comment": "BENTUK FINAL, NILAI BELUM. Kunci dan tipe di file ini tidak akan berubah lagi — Person A boleh menulis ChainClient sekarang. Yang berubah saat deploy hanyalah isi 'contracts' dan 'deployment'.",
-
-  "status": "PENDING_DEPLOY",
-
+  "status": "DEPLOYED",
   "chain": {
     "name": "X Layer Testnet",
     "chainId": 1952,
@@ -11,28 +9,24 @@
     "gasToken": "OKB",
     "_comment": "chainId 1952 (0x7a0), BUKAN 195. Diverifikasi lewat eth_chainId 21 Jul. 195 adalah chainId X1 testnet, nama lama X Layer sebelum rebrand."
   },
-
   "contracts": {
-    "registry": "0x0000000000000000000000000000000000000000",
-    "certificate": "0x0000000000000000000000000000000000000000",
-    "vault": "0x0000000000000000000000000000000000000000",
-    "challengeManager": "0x0000000000000000000000000000000000000000",
+    "registry": "0x9ca497a98019bB7D666c19D060053677fbeb6903",
+    "certificate": "0xeB8CA2bBCeccCdbD6C5Ba480E6757eF22955E5E5",
+    "vault": "0x012adCAf1ae61504d7506E7a431B59E0818aB3a9",
+    "challengeManager": "0x9458B38DF05C1bD2D790B63CFe1F852B67966EC2",
     "mockUSDT": "0x9ad14e783DCe270BE1214153E940aa686f91fa40"
   },
-
   "roles": {
-    "gateway": "0x0000000000000000000000000000000000000000",
-    "resolver": "0x0000000000000000000000000000000000000000",
+    "gateway": "0xa3C3f8eE84a301fc4BD63DD712344d627230514B",
+    "resolver": "0x95005471397022Acf0459A0b71818453fCFC4859",
     "_comment": "gateway = wallet Person A, satu-satunya yang boleh memanggil registerAndMint. Alamat ini TERKUNCI saat deploy (set-once) — salah setel berarti redeploy keempat kontrak."
   },
-
   "payToken": {
     "address": "0x9ad14e783DCe270BE1214153E940aa686f91fa40",
     "symbol": "mUSDT",
     "decimals": 6,
     "_comment": "6 DESIMAL, bukan 18. Semua nilai uang di API adalah base unit: 1 USDT = 1000000."
   },
-
   "params": {
     "waitingPeriodSeconds": 259200,
     "coverageTermSeconds": 31536000,
@@ -43,11 +37,10 @@
     "livenessWindowSeconds": 172800,
     "_comment": "Nilai default kontrak. Bisa berubah lewat setter onlyOwner — BACA DARI CHAIN, jangan hardcode. Saat demo, waitingPeriod & livenessWindow dipercepat (lihat PrepareDemo.s.sol)."
   },
-
   "deployment": {
-    "deployedAt": null,
-    "blockNumber": null,
-    "deployerAddress": null,
-    "verifiedOnSourcify": false
+    "deployedAt": "2026-07-21T23:49:53+00:00",
+    "blockNumber": 36218956,
+    "deployerAddress": "0x8453D54d0A5009251BEcdB9304E14c7fa83eb230",
+    "verifiedOnSourcify": true
   }
 }

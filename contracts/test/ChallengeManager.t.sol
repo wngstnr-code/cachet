@@ -204,6 +204,63 @@ contract ChallengeManagerTest is Test {
         cm.resolve(id, false, "ipfs://putusan"); // tidak revert
     }
 
+    /// @dev G1: memperpendek `livenessWindow` di tengah gugatan yang SUDAH
+    ///      terbuka tidak boleh mempercepat putusan. Yang berlaku adalah
+    ///      snapshot saat gugatan dibuka, bukan nilai saat resolve — kalau
+    ///      tidak, owner bisa memangkas jendela ke lantai dan resolver langsung
+    ///      memutus, melubangi mitigasi utama terhadap kolusi (A1).
+    function test_G1_LivenessDiperpendekDiTengahGugatan_SnapshotBerlaku() public {
+        uint64 floor_ = cm.MIN_LIVENESS_WINDOW();
+        uint256 certId = _mint();
+        vm.prank(challenger);
+        uint256 id = cm.challenge(certId, "ipfs://bukti");
+        uint64 openedAt = uint64(block.timestamp);
+
+        // Owner memangkas liveness ke lantai SETELAH gugatan dibuka.
+        vm.prank(owner);
+        cm.setLivenessWindow(floor_);
+
+        // Di nilai BARU (30 detik) sudah lewat; di snapshot (48 jam) belum.
+        vm.warp(openedAt + floor_);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ChallengeManager.LivenessNotElapsed.selector, openedAt, openedAt + 48 hours
+            )
+        );
+        vm.prank(resolver);
+        cm.resolve(id, true, "ipfs://putusan");
+
+        // Snapshot 48 jam tetap ditegakkan sampai penuh.
+        vm.warp(openedAt + 48 hours);
+        vm.prank(resolver);
+        cm.resolve(id, true, "ipfs://putusan"); // baru sekarang boleh
+    }
+
+    /// @dev G1 arah sebaliknya: memperpanjang `livenessWindow` di tengah
+    ///      gugatan tidak boleh menunda putusan (dan menahan sertifikat
+    ///      terkunci). Gugatan yang dibuka saat liveness 1 jam tetap bisa
+    ///      diputus setelah 1 jam meski owner menaikkannya ke MAX.
+    function test_G1_LivenessDiperpanjangDiTengahGugatan_SnapshotBerlaku() public {
+        uint64 maxW = cm.MAX_LIVENESS_WINDOW();
+        uint256 certId = _mint();
+
+        vm.prank(owner);
+        cm.setLivenessWindow(1 hours); // snapshot gugatan berikutnya = 1 jam
+
+        vm.prank(challenger);
+        uint256 id = cm.challenge(certId, "ipfs://bukti");
+        uint64 openedAt = uint64(block.timestamp);
+
+        // Owner menaikkan ke MAX setelah gugatan terbuka.
+        vm.prank(owner);
+        cm.setLivenessWindow(maxW);
+
+        // Snapshot 1 jam yang berlaku: putusan tidak tertunda sampai 30 hari.
+        vm.warp(openedAt + 1 hours);
+        vm.prank(resolver);
+        cm.resolve(id, false, "ipfs://putusan"); // tidak revert
+    }
+
     // ── challenge ────────────────────────────────────────────────────────────
 
     function test_ChallengeIdMulaiDari1() public {

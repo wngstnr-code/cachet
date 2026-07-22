@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 
 /// @title CachetGoverned — dasar bersama untuk kontrak berparameter
 /// @notice Cachet **tidak memakai proxy dan tidak upgradeable** (§5.0). Yang
@@ -14,13 +15,28 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 ///         (mis. `MAX_WAITING_PERIOD`).
 ///
 ///         KEKUASAAN OWNER YANG TETAP ADA, dan WAJIB diungkap di README serta
-///         disclosure listing (audit B2a):
-///         1. Owner bisa mengganti alamat gateway, lalu menerbitkan sertifikat
-///            sendiri. Sertifikat tetap tunduk pada aturan yang sama —
-///            bond & premi tetap ditarik, payout tetap ke pemegang — tapi
-///            owner bisa menerbitkan tanpa lewat pemeriksaan originality.
-///         2. Owner bisa mengganti alamat ChallengeManager, dan dengan begitu
-///            mengendalikan siapa yang boleh mencabut sertifikat.
+///         disclosure listing (audit B2a). Wiring bersifat **set-once**
+///         (`_lockWiring`): sekali disetel saat deploy, alamat gateway,
+///         resolver, dan ChallengeManager TIDAK bisa diganti lagi. Karena itu
+///         kepercayaan pada owner terbatas pada **momen deploy**, bukan
+///         seterusnya:
+///         1. Owner memilih alamat gateway SATU KALI saat deploy. Owner bisa
+///            saja menyetel gateway = dirinya sendiri sejak awal dan
+///            menerbitkan sertifikat tanpa lewat pemeriksaan originality —
+///            tapi sertifikat itu tetap tunduk aturan yang sama (bond & premi
+///            tetap ditarik, payout tetap ke pemegang), dan identitas gateway
+///            publik & beku sejak blok deploy.
+///         2. Owner tetap bisa menyetel parameter kebijakan (`waitingPeriod`,
+///            `premiumBps`, `livenessWindow`, dst.) dalam pagar lantai/plafon
+///            selama kontrak hidup — termasuk ke setelan demo yang lemah
+///            (liveness 30 detik, premi 0,1%) atau `maxDeclaredValue = 0`
+///            sebagai rem darurat penerbitan. Tiap perubahan emit
+///            `ParamChanged`, tapi "terlihat" hanya berarti kalau ada yang
+///            mengawasi.
+///
+///         Yang owner TIDAK bisa lakukan setelah deploy: mengganti alamat
+///         gateway/resolver/ChallengeManager, mengubah logika, atau menarik
+///         dana dari vault.
 ///
 ///         Ini konsekuensi tak terhindarkan dari MVP tanpa timelock/multisig.
 ///         Jangan mengklaim "trustless" — klaim yang benar adalah "aturan
@@ -29,7 +45,16 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 /// @dev Setiap perubahan parameter WAJIB emit `ParamChanged` supaya kebijakan
 ///      tetap terlacak publik di explorer — tanpa ini, "configurable" jadi
 ///      tidak bisa dibedakan dari "diam-diam diubah".
-abstract contract CachetGoverned is Ownable {
+///
+/// @dev G5: memakai `Ownable2Step`, bukan `Ownable` biasa. Owner adalah
+///      satu-satunya yang bisa menyetel parameter (termasuk rem darurat
+///      `maxDeclaredValue = 0`); kalau `transferOwnership` salah ketik ke
+///      alamat yang tidak bisa menerima, SEMUA setter mati permanen (sekelas
+///      C1). Dua langkah menutup itu: pemilik baru WAJIB `acceptOwnership()`
+///      dulu, jadi alamat salah ketik hanya menggantung sebagai `pendingOwner`
+///      tanpa memutus kendali. (`renounceOwnership` tetap satu langkah bawaan
+///      OZ — pemakaian eksplisit, bukan kecelakaan diam.)
+abstract contract CachetGoverned is Ownable2Step {
     /// @param key nama parameter sebagai bytes32, mis. bytes32("waitingPeriod")
     event ParamChanged(bytes32 indexed key, uint256 oldValue, uint256 newValue);
 
