@@ -4,7 +4,10 @@ Runbook ini men-deploy **engine + gateway saja** ke VPS production yang sudah
 melayani `simpleartch.com` (2 vCore, 4 GB RAM, 40 GB NVMe). SimpleArt selalu
 menjadi workload prioritas.
 
-Desain yang disetujui: [`2026-07-22-ovh-shared-vps-design.md`](./2026-07-22-ovh-shared-vps-design.md).
+Desain yang disetujui:
+
+- [`2026-07-22-ovh-shared-vps-design.md`](./2026-07-22-ovh-shared-vps-design.md)
+- [`2026-07-22-github-actions-cicd-design.md`](./2026-07-22-github-actions-cicd-design.md)
 
 ## Kebijakan availability
 
@@ -24,6 +27,7 @@ Desain yang disetujui: [`2026-07-22-ovh-shared-vps-design.md`](./2026-07-22-ovh-
 | `Caddyfile.cachet` | Site block Cachet untuk referensi/diff |
 | `build-ovh-images.sh` | Build `linux/amd64` di Mac/CI dan push ke GHCR |
 | `cachetctl.sh` | Preflight, backup, deploy, pause/resume, rollback, smoke |
+| `ci-deploy.sh` | Helper deployment GitHub Actions dengan SimpleArt gate dan image rollback |
 
 `docker-compose.yml` lama tetap tersedia untuk development/rehearsal lokal dan
 tidak dipakai pada VPS shared production.
@@ -303,7 +307,49 @@ Expected: hanya `127.0.0.1:8787`; tidak ada baris port 8100.
 
 ## Operasi rutin
 
+### CI/CD GitHub Actions (jalur utama)
+
+Tiga workflow membagi trust boundary:
+
+- `cachet-ci`: test/typecheck/config dan build image tanpa push pada PR;
+- `cachet-images`: setelah perubahan backend masuk `main`, test ulang lalu push dua
+  image private dengan tag full commit SHA yang sama;
+- `cachet-deploy`: tombol manual yang memakai GitHub Environment
+  `ovh-production`, memerlukan approval, lalu deploy image SHA yang sudah terbit.
+
+Konfigurasikan repository secret `GHCR_PUSH_TOKEN` menggunakan PAT classic khusus
+dengan `write:packages`. Jangan pakai token `gh` interaktif harian. Konfigurasikan
+Environment `ovh-production` dengan:
+
+| Nama | Jenis | Isi |
+|---|---|---|
+| `GHCR_READ_TOKEN` | secret | PAT classic terpisah, `read:packages` saja |
+| `OVH_SSH_PRIVATE_KEY` | secret | private key deployment khusus tanpa passphrase |
+| `OVH_HOST` | variable | IPv4/hostname VPS |
+| `OVH_USER` | variable | `ubuntu` |
+| `OVH_SSH_HOST_KEY` | variable | satu baris `known_hosts` yang sudah diverifikasi |
+
+Atur required reviewer Environment ke Dien dan izinkan self-review, karena Dien
+adalah operator deployment. Batasi deployment branch ke `main`. Workflow tetap
+memvalidasi bahwa SHA input merupakan ancestor `origin/main`.
+
+Alur release:
+
+1. Merge PR backend setelah `cachet-ci` hijau.
+2. Tunggu `cachet-images` menerbitkan kedua image full-SHA.
+3. Actions → `cachet-deploy` → Run workflow pada `main`.
+4. Kosongkan `image_sha` untuk deploy HEAD `main`, atau isi full SHA image lama
+   untuk rollback terkontrol.
+5. Approve job pada Environment `ovh-production`.
+
+Registry login di VPS memakai Docker config sementara di `/run`, lalu selalu
+dihapus. Workflow tidak menimpa `/opt/cachet/.env`, tidak reload Caddy, dan tidak
+menjalankan command terhadap project Compose SimpleArt.
+
 ### Deploy Cachet
+
+Gunakan `cachet-deploy` di GitHub Actions. Jalur manual berikut tetap tersedia
+untuk recovery bila GitHub Actions sedang tidak tersedia:
 
 1. Build/push image dari commit bersih di Mac.
 2. Ubah dua tag di `/opt/cachet/deploy.env` ke SHA yang sama.
@@ -333,6 +379,10 @@ Backup berada di `/var/backups/cachet/<UTC timestamp>/` dan berisi SQLite backup
 konsisten, gateway JSON bila ada, serta image tags. Rotasi backup dilakukan setelah
 memastikan snapshot yang lebih baru dapat dibaca; jangan menghapus backup terakhir.
 
+Untuk deployment hackathon sekitar tiga minggu, tidak ada timer backup harian.
+`cachetctl deploy` selalu membuat backup tepat sebelum mengganti image. Buat satu
+backup manual tambahan sebelum teardown akhir.
+
 ### Rollback image
 
 ```bash
@@ -342,6 +392,27 @@ sudo /opt/cachet/cachetctl rollback \
 
 Ganti `UTC_TIMESTAMP` dengan direktori backup nyata yang dipilih setelah menjalankan
 `sudo ls -1 /var/backups/cachet`. Rollback image tidak menimpa data persistent.
+
+### Teardown setelah hackathon
+
+Tahap reversible—membebaskan RAM/CPU tetapi mempertahankan data:
+
+```bash
+sudo /opt/cachet/cachetctl backup
+sudo docker compose \
+  --project-name cachet \
+  --env-file /opt/cachet/deploy.env \
+  --file /opt/cachet/compose.yml \
+  down
+```
+
+Jangan tambahkan `--volumes` dan jangan hapus `/var/lib/cachet` pada tahap ini.
+Kemudian hapus site block Cachet dari kandidat Caddy, validasi, reload, dan pastikan
+`https://simpleartch.com/api/health` tetap sehat.
+
+Penghapusan final data, backup, image Docker, Origin CA key, DNS, dan GitHub
+Environment secrets adalah operasi terpisah dan irreversible. Lakukan hanya setelah
+arsip final sudah diunduh serta diverifikasi dan Dien memberi konfirmasi eksplisit.
 
 ## Acceptance akhir
 
