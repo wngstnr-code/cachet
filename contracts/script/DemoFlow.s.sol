@@ -145,7 +145,9 @@ contract DemoFlow is Script {
                 console.log("cert is REVOKED -- it already lost a challenge.");
                 console.log("Run 'make demo' again to mint a FRESH cert, then challenge that one.");
             } else if (block.timestamp < d.coverageStart) {
-                console.log("coverage NOT active yet. Wait", d.coverageStart - block.timestamp, "more seconds.");
+                console.log(
+                    "coverage NOT active yet. Wait", d.coverageStart - block.timestamp, "more seconds."
+                );
             } else {
                 console.log("coverage window already ENDED at", d.coverageEnd);
             }
@@ -154,7 +156,9 @@ contract DemoFlow is Script {
 
         console.log("");
         console.log("[3/5] Challenger opens a challenge with evidence...");
-        console.log("      coverage: ACTIVE since", d.coverageStart, "-- the claim is assessed at THIS moment");
+        console.log(
+            "      coverage: ACTIVE since", d.coverageStart, "-- the claim is assessed at THIS moment"
+        );
 
         vm.startBroadcast(vm.envUint("DEMO_CHALLENGER_PK"));
         uint256 challengeId = c.cm.challenge(certId, "ipfs://evidence-earlier-work");
@@ -211,7 +215,9 @@ contract DemoFlow is Script {
             "USDT  <-- bond back + bounty"
         );
         console.log(
-            "  CREATOR   (who issued it)        :", creatorGain / 1e6, "USDT  <-- ZERO, their bond was slashed"
+            "  CREATOR   (who issued it)        :",
+            creatorGain / 1e6,
+            "USDT  <-- ZERO, their bond was slashed"
         );
         console.log("");
         console.log("Certificate status:");
@@ -255,7 +261,9 @@ contract DemoFlow is Script {
         uint64 earliestResolve = openedAt + c.cm.livenessWindow();
         if (block.timestamp < earliestResolve) {
             console.log("");
-            console.log("liveness window not over yet. Wait", earliestResolve - block.timestamp, "more seconds.");
+            console.log(
+                "liveness window not over yet. Wait", earliestResolve - block.timestamp, "more seconds."
+            );
             revert("Liveness window still open -- see remaining seconds above");
         }
         console.log("liveness : PASSED (opened at", openedAt, ")");
@@ -264,12 +272,8 @@ contract DemoFlow is Script {
     /// @dev Gagal lebih awal dengan pesan yang bisa dibaca manusia, daripada
     ///      revert kriptik di tengah rekaman.
     function _preflight(Ctx memory c) internal view {
-        require(
-            c.cert.waitingPeriod() <= 1 hours, "Run 'make demo-prep' first: waitingPeriod is still long"
-        );
-        require(
-            c.cm.livenessWindow() <= 1 hours, "Run 'make demo-prep' first: livenessWindow is still long"
-        );
+        require(c.cert.waitingPeriod() <= 1 hours, "Run 'make demo-prep' first: waitingPeriod is still long");
+        require(c.cm.livenessWindow() <= 1 hours, "Run 'make demo-prep' first: livenessWindow is still long");
         require(
             c.vault.balanceOfVault() >= DECLARED_VALUE,
             "Vault capital is below the claim value -- payout would be partial, demo unconvincing"
