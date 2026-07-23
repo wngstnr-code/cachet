@@ -96,7 +96,7 @@ baca gratis di gateway, atau cert page:
 
 ```bash
 curl -s https://api.cachetprotocol.xyz/v1/cert/<CERT_ID> | python3 -m json.tool
-# atau buka: https://cachet-six.vercel.app/cert/<CERT_ID>
+# atau buka: https://cachetprotocol.vercel.app/cert/<CERT_ID>
 ```
 
 Periksa entri registry (di sinilah `registeredAt` dan `commitAt`):
