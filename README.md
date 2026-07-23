@@ -14,10 +14,10 @@ Every claim below is a public transaction. You do not need to trust us, or this 
 
 | Page | What it shows |
 |---|---|
-| [/cert/7](https://cachet-six.vercel.app/cert/7) | **ACTIVE** coverage, artwork preview stored entirely on-chain in `tokenURI` |
-| [/cert/8](https://cachet-six.vercel.app/cert/8) | **REVOKED**: lost a challenge, the claim was paid to the current holder |
-| [/cert/9](https://cachet-six.vercel.app/cert/9) | Survived a challenge: the challenger's bond was slashed |
-| [/cert/999](https://cachet-six.vercel.app/cert/999) | Honest not-found state |
+| [/cert/7](https://cachetprotocol.vercel.app/cert/7) | **ACTIVE** coverage, artwork preview stored entirely on-chain in `tokenURI` |
+| [/cert/8](https://cachetprotocol.vercel.app/cert/8) | **REVOKED**: lost a challenge, the claim was paid to the current holder |
+| [/cert/9](https://cachetprotocol.vercel.app/cert/9) | Survived a challenge: the challenger's bond was slashed |
+| [/cert/999](https://cachetprotocol.vercel.app/cert/999) | Honest not-found state |
 
 **One full Golden Path on-chain** (certificate #5):
 
