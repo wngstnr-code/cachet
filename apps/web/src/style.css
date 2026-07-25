@@ -327,3 +327,70 @@ td.mono, .mono { font-family: var(--mono); font-size: 13px; }
   .masthead .net { margin-left: 0; width: 100%; margin-top: 4px; }
   tbody td { padding-right: 10px; }
 }
+
+/* ── Pemilih jaringan ────────────────────────────────────────────────────
+   Segmented control kecil, sengaja sekalem meta lain: ini penanda konteks
+   yang harus selalu terbaca, bukan tombol aksi yang menarik perhatian. */
+.chain-switch {
+  margin-left: auto;
+  display: inline-flex;
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.chain-opt {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 5px 10px;
+  background: transparent;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.chain-opt + .chain-opt { border-left: 1px solid var(--hairline); }
+.chain-opt:hover { color: var(--ink); background: rgba(0, 0, 0, 0.03); }
+
+.chain-opt.is-active {
+  color: var(--accent-ink);
+  background: var(--accent);
+}
+
+/* Testnet aktif dibedakan warna, bukan hanya teks: itu satu-satunya isyarat
+   yang tetap terbaca saat halaman dilihat sekilas atau di-screenshot. */
+.chain-opt.is-active[data-testnet="true"] { background: var(--expired); }
+
+.home .chain-switch { margin: 0 0 20px; }
+
+/* ── Peringatan testnet ──────────────────────────────────────────────────
+   Jaminan di testnet berupa token faucet. Tanpa penanda ini, halaman testnet
+   dan mainnet terlihat identik — dan itu membuat sertifikat tanpa nilai
+   ekonomi tampak seperti jaminan sungguhan. */
+.net-warning {
+  border: 1px solid var(--expired);
+  border-left-width: 3px;
+  border-radius: 2px;
+  padding: 12px 16px;
+  margin: -24px 0 40px;
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink);
+  background: rgba(138, 109, 31, 0.06);
+}
+
+.net-warning strong { font-weight: 600; }
+.net-warning .mono { font-family: var(--mono); font-size: 12px; }
+.net-warning a { color: var(--expired); margin-left: 6px; }
+
+.home-collateral {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: -8px;
+}
+
+.home-collateral .mono { font-family: var(--mono); font-size: 12px; }
+.home-collateral.is-testnet { color: var(--expired); }

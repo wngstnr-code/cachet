@@ -2,13 +2,17 @@
 
 **A certificate that puts money behind its claim.** Creators register their work in the Cachet registry and mint a certificate backed by real collateral. If the work is later proven to be a copy, the payout goes to whoever **holds** the work now, not to the creator who lied.
 
-[![contracts CI](https://github.com/wngstnr-code/cachet/actions/workflows/contracts.yml/badge.svg)](https://github.com/wngstnr-code/cachet/actions/workflows/contracts.yml) · Live on **X Layer Testnet** (chain 1952) · All contracts verified on Sourcify
+[![contracts CI](https://github.com/wngstnr-code/cachet/actions/workflows/contracts.yml/badge.svg)](https://github.com/wngstnr-code/cachet/actions/workflows/contracts.yml) · Live on **X Layer mainnet** (chain 196) and **X Layer Testnet** (chain 1952) · All contracts verified on Sourcify
+
+> **Two live deployments, and the difference matters.** Mainnet is the real one: real USD₮0, a vault you cannot refill from a faucet, and a coverage cap sized to what that vault actually holds — **2 USDT** during bootstrap. Testnet is where the walkthrough below lives: the same contracts, but the pay token is `MockUSDT`, which anyone can mint for free. Every worked example on this page is a **testnet** transaction, so read them as a demonstration of the mechanism, not as evidence of collateral.
 
 ---
 
 ## ⚡ Try it in 60 seconds
 
 Every claim below is a public transaction. You do not need to trust us, or this README.
+
+> Everything in this section is on **X Layer Testnet**. The full Golden Path has been played out end to end there — including a real payout — which is what makes it worth showing. Mainnet contracts are listed further down; they are new, so they have no such history yet.
 
 **Live certificate pages** (static site, reads the chain directly, no backend):
 
@@ -87,17 +91,19 @@ Deliberate design choice: the cert page has **no backend**. If Cachet's servers 
 
 ## For AI agents (x402 + MCP)
 
-Paid endpoints (`/v1/verify`, `/v1/mint`) answer HTTP **402** with an [x402](https://www.x402.org/) payment envelope (asset, amount, payTo) when called without payment. Agents pay in test USDT and retry; the MCP server wraps the same flow as tools. This makes "verify before you buy" a primitive an agent can execute end-to-end without a human.
+Paid endpoints (`/v1/verify`, `/v1/mint`) answer HTTP **402** with an [x402](https://www.x402.org/) payment envelope (asset, amount, payTo) when called without payment. Agents pay and retry; the MCP server wraps the same flow as tools. This makes "verify before you buy" a primitive an agent can execute end-to-end without a human.
+
+The envelope's `network` is the CAIP-2 id of the chain the gateway is actually running on — `eip155:196` on mainnet, where settlement is in USD₮0 ([`0x779Ded…3736`](https://www.oklink.com/xlayer/address/0x779Ded0c9e1022225f8E0630b35a9b54bE713736)). The gateway **refuses to start** if that value disagrees with its own `CHAIN_ID`: advertising a chain you are not on would send a buyer's funds somewhere you cannot settle them, and that failure is silent.
 
 ## Honest limitations
 
 We sell trust, so the fine print is the product:
 
 - **The registry is our corpus, not the internet.** "First-seen" means first seen by Cachet.
-- **Coverage is capped**, and the cap differs per deployment: **100 USDT** on X Layer Testnet, **2 USDT** on the X Layer mainnet bootstrap. It is an on-chain parameter (`maxDeclaredValue`) and is further bounded by the vault balance — read it from the contract rather than trusting this page. A claim can only ever pay what the vault actually holds, so the advertised cap is kept at or below the funded amount.
-- **Adjudication is a single resolver in this MVP**, constrained by a public liveness window and published admissible-evidence rules ([`contracts/RESOLVER.md`](contracts/RESOLVER.md)). Trustless adjudication it is not, yet — the roadmap is a decentralized oracle set (3+ independent resolvers), not a single key.
+- **Coverage is capped, and the cap is small.** It is an on-chain parameter (`maxDeclaredValue`) that differs per deployment and is further bounded by the vault balance — see the table below, but read the contract to be sure. A claim can only ever pay what the vault actually holds.
+- **Adjudication is centralized**, constrained by a public liveness window and published admissible-evidence rules ([`contracts/RESOLVER.md`](contracts/RESOLVER.md)). On mainnet the resolver is a 2-of-3 multisig, which removes the single-key failure mode but **not** the centralization: the operator still decides. Trustless adjudication it is not — the roadmap is a decentralized oracle set (3+ independent resolvers).
 - **The embedding tier is advisory.** Only the deterministic perceptual-hash ensemble backs hard claims; there is no "AI detector" here.
-- Everything runs on **X Layer Testnet** with a test USDT token.
+- **Testnet collateral is not collateral.** The testnet vault holds `MockUSDT`, which has a public faucet. Only the mainnet deployment is backed by a token that costs anything to acquire.
 
 ## Security invariants (each one has a test)
 
@@ -109,7 +115,21 @@ We sell trust, so the fine print is the product:
 | Waiting period and coverage window are enforced on-chain, assessed when a challenge is **opened** | [`contracts/test/ChallengeManager.t.sol`](contracts/test/ChallengeManager.t.sol) |
 | Challenger bonds are earmarked, never spendable as claim liquidity | [`contracts/test/CachetVault.t.sol`](contracts/test/CachetVault.t.sol) |
 
-## Contracts (X Layer Testnet, chain 1952)
+## Contracts
+
+### X Layer mainnet (chain 196) — the collateralized deployment
+
+| Contract | Address | Verified source |
+|---|---|---|
+| CachetRegistry | [`0x4A88…88D6`](https://www.oklink.com/xlayer/address/0x4A88e9B882C3109e8D786e5e075ccC004b5188D6) | [Sourcify](https://repo.sourcify.dev/196/0x4A88e9B882C3109e8D786e5e075ccC004b5188D6) |
+| CachetCertificate | [`0xa372…4FEF`](https://www.oklink.com/xlayer/address/0xa372e0Ae92172928D7800F32542414fC595E4FEF) | [Sourcify](https://repo.sourcify.dev/196/0xa372e0Ae92172928D7800F32542414fC595E4FEF) |
+| CachetVault | [`0x8989…a9f4`](https://www.oklink.com/xlayer/address/0x89893D5DDedAf7C6b04Cde7B9101e12F7Cc0a9f4) | [Sourcify](https://repo.sourcify.dev/196/0x89893D5DDedAf7C6b04Cde7B9101e12F7Cc0a9f4) |
+| ChallengeManager | [`0xF3a2…65a7`](https://www.oklink.com/xlayer/address/0xF3a222E0f58B664ae356035290757dD3A5C765a7) | [Sourcify](https://repo.sourcify.dev/196/0xF3a222E0f58B664ae356035290757dD3A5C765a7) |
+| USD₮0 (pay token, 6 decimals) | [`0x779D…3736`](https://www.oklink.com/xlayer/address/0x779Ded0c9e1022225f8E0630b35a9b54bE713736) | third-party token, not ours |
+
+The pay token is the canonical USD₮0 on X Layer, **not** the older bridged USDT at `0x1e4a5963…d41d`. They are different tokens and do not interchange. Resolver: Safe 2-of-3 at [`0xE6b3…9268`](https://www.oklink.com/xlayer/address/0xE6b38687B18e75631086b9b39ca0406b6a0F9268) — set once at deploy and not changeable without redeploying the system.
+
+### X Layer Testnet (chain 1952) — where the walkthrough above lives
 
 | Contract | Address | Verified source |
 |---|---|---|
@@ -119,7 +139,17 @@ We sell trust, so the fine print is the product:
 | ChallengeManager | [`0x8BF7…E664`](https://www.okx.com/web3/explorer/xlayer-test/address/0x8BF7551F7e9CB432EbA5fFC21972Bce7f509E664) | [Sourcify](https://repo.sourcify.dev/1952/0x8BF7551F7e9CB432EbA5fFC21972Bce7f509E664) |
 | MockUSDT (pay token, 6 decimals) | [`0x9ad1…fa40`](https://www.okx.com/web3/explorer/xlayer-test/address/0x9ad14e783DCe270BE1214153E940aa686f91fa40) | [Sourcify](https://repo.sourcify.dev/1952/0x9ad14e783DCe270BE1214153E940aa686f91fa40) |
 
-Parameters live on-chain and are readable by anyone. On **testnet** (above): premium 2% of declared value, fraud bond 5 USDT, challenge bond 10 USDT, coverage cap 100 USDT. The **mainnet bootstrap** deployment runs the same contracts with smaller, fully funded numbers: fraud bond 1 USDT, challenge bond 1 USDT, coverage cap 2 USDT, premium unchanged at 2%.
+Parameters live on-chain and are readable by anyone — the table below is a convenience, the contract is the truth:
+
+| Parameter | Mainnet (196) | Testnet (1952) |
+|---|---|---|
+| Coverage cap (`maxDeclaredValue`) | 2 USDT | 100 USDT |
+| Fraud bond | 1 USDT | 5 USDT |
+| Challenge bond | 1 USDT | 10 USDT |
+| Premium | 2% | 2% |
+| Waiting period / liveness window | 72 h / 48 h | 72 h / 48 h |
+
+The mainnet numbers are smaller on purpose. The cap is set at or below what the vault actually holds, so the advertised guarantee is one the contract can pay in full. A larger cap over the same vault would not fail loudly — it would quietly become a `PartialPayout`, which is exactly the kind of number this project refuses to print.
 
 ## Run it yourself
 

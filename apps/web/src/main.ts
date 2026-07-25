@@ -3,49 +3,92 @@ import "@fontsource-variable/jetbrains-mono";
 import "./style.css";
 
 import { CertNotFoundError, loadCert, loadImage } from "./chain";
+import type { ChainConfig, ChainKey } from "./config";
+import { CHAINS, DEFAULT_CHAIN, LEGACY_CHAIN, certPath, isChainKey } from "./config";
 import { certView, homeView, loadingView, notFoundView, rpcErrorView } from "./views";
 
 const app = document.getElementById("app")!;
 
-/** Router path-based: "/" dan "/cert/:id". Vercel rewrite semua ke index.html. */
+type Route =
+  | { kind: "home"; chain: ChainConfig }
+  | { kind: "cert"; chain: ChainConfig; idStr: string }
+  | { kind: "unknown"; chain: ChainConfig; idStr: string };
+
+/** Router path-based. Vercel rewrite semua path ke index.html.
+ *
+ *    /                      beranda, DEFAULT_CHAIN
+ *    /mainnet · /testnet    beranda chain tsb
+ *    /<chain>/cert/:id      sertifikat
+ *    /cert/:id              BENTUK LAMA -> LEGACY_CHAIN (testnet)
+ *
+ *  Bentuk lama dipertahankan dan TIDAK boleh dialihkan ke mainnet: tautan
+ *  seperti /cert/8 sudah tersebar di README dan merujuk sertifikat testnet
+ *  tertentu. Memetakannya ke mainnet akan menampilkan sertifikat lain — atau
+ *  halaman kosong — tanpa satu pun tanda bahwa artinya berubah. */
+function parseRoute(pathname: string): Route {
+  const path = pathname.replace(/\/+$/, "") || "/";
+
+  if (path === "/") return { kind: "home", chain: CHAINS[DEFAULT_CHAIN] };
+
+  const scoped = path.match(/^\/([a-z]+)(?:\/cert\/(\d+))?$/);
+  if (scoped && isChainKey(scoped[1]!)) {
+    const chain = CHAINS[scoped[1] as ChainKey];
+    return scoped[2] ? { kind: "cert", chain, idStr: scoped[2] } : { kind: "home", chain };
+  }
+
+  const legacy = path.match(/^\/cert\/(\d+)$/);
+  if (legacy) return { kind: "cert", chain: CHAINS[LEGACY_CHAIN], idStr: legacy[1]! };
+
+  return { kind: "unknown", chain: CHAINS[DEFAULT_CHAIN], idStr: path.replace(/^\//, "") };
+}
+
 async function route(): Promise<void> {
-  const match = location.pathname.match(/^\/cert\/(\d+)$/);
-  if (!match) {
-    if (location.pathname !== "/") {
-      app.innerHTML = notFoundView(location.pathname.replace(/^\/cert\//, ""));
-      return;
-    }
-    app.innerHTML = homeView();
-    bindLookup();
+  const r = parseRoute(location.pathname);
+
+  if (r.kind === "home") {
+    document.title = `Cachet · ${r.chain.name}`;
+    app.innerHTML = homeView(r.chain);
+    bindLookup(r.chain);
     return;
   }
 
-  const idStr = match[1]!;
+  if (r.kind === "unknown") {
+    app.innerHTML = notFoundView(r.chain, r.idStr);
+    return;
+  }
+
+  const { chain, idStr } = r;
   const certId = BigInt(idStr);
-  document.title = `Certificate #${certId} · Cachet`;
-  app.innerHTML = loadingView();
+  const pathAtStart = location.pathname;
+  document.title = `Certificate #${certId} · ${chain.name} · Cachet`;
+  app.innerHTML = loadingView(chain);
 
   try {
-    const cert = await loadCert(certId);
+    const cert = await loadCert(chain, certId);
+    // Navigasi bisa terjadi selagi read berjalan (mis. pindah chain). Menulis
+    // hasil yang sudah tidak diminta akan menampilkan sertifikat chain lama.
+    if (location.pathname !== pathAtStart) return;
+
     // Gambar dimuat SETELAH data chain — halaman tidak menunggu IPFS.
     app.innerHTML = certView(cert, null);
     bindCopy();
     const image = await loadImage(cert.tokenURI);
-    if (image && location.pathname === `/cert/${certId}`) {
+    if (image && location.pathname === pathAtStart) {
       app.innerHTML = certView(cert, image);
       bindCopy();
     }
   } catch (err) {
+    if (location.pathname !== pathAtStart) return;
     if (err instanceof CertNotFoundError) {
-      app.innerHTML = notFoundView(idStr);
+      app.innerHTML = notFoundView(chain, idStr);
     } else {
       console.error(err);
-      app.innerHTML = rpcErrorView(idStr);
+      app.innerHTML = rpcErrorView(chain, idStr);
     }
   }
 }
 
-function bindLookup(): void {
+function bindLookup(chain: ChainConfig): void {
   const form = document.getElementById("lookup-form") as HTMLFormElement | null;
   form?.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -55,7 +98,7 @@ function bindLookup(): void {
         "Certificate IDs are positive numbers.";
       return;
     }
-    navigate(`/cert/${raw}`);
+    navigate(certPath(chain.key, raw));
   });
 }
 

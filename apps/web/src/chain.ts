@@ -10,20 +10,29 @@ import {
   CachetRegistryAbi,
   ChallengeManagerAbi,
 } from "../../../packages/contracts-abi/index";
-import { addresses, CHAIN_ID, DEPLOY_BLOCK, RPC_URL } from "./config";
+import type { ChainConfig } from "./config";
 
-const xLayerTestnet = defineChain({
-  id: CHAIN_ID,
-  name: addresses.chain.name,
-  nativeCurrency: { name: "OKB", symbol: "OKB", decimals: 18 },
-  rpcUrls: { default: { http: [RPC_URL] } },
-});
+/** Satu client per chain, dibuat sekali. Client tidak boleh jadi state global:
+ *  halaman bisa berpindah chain tanpa reload, dan client yang tertinggal akan
+ *  membaca alamat chain lain — sertifikat "tidak ditemukan" yang membingungkan. */
+const clients = new Map<number, ReturnType<typeof createPublicClient>>();
 
-const client = createPublicClient({ chain: xLayerTestnet, transport: http() });
-
-const CERT = addresses.contracts.certificate as `0x${string}`;
-const REGISTRY = addresses.contracts.registry as `0x${string}`;
-const CHALLENGE = addresses.contracts.challengeManager as `0x${string}`;
+function clientFor(c: ChainConfig) {
+  let client = clients.get(c.chainId);
+  if (!client) {
+    client = createPublicClient({
+      chain: defineChain({
+        id: c.chainId,
+        name: c.name,
+        nativeCurrency: { name: "OKB", symbol: "OKB", decimals: 18 },
+        rpcUrls: { default: { http: [c.rpcUrl] } },
+      }),
+      transport: http(),
+    });
+    clients.set(c.chainId, client);
+  }
+  return client;
+}
 
 /** enum IChallengeManager.Status — urutan dari interface §3.1. */
 export const ChallengeStatus = {
@@ -44,6 +53,11 @@ export interface ChallengeRow {
 }
 
 export interface CertView {
+  /** Chain asal sertifikat ini. Ikut dibawa supaya view tidak pernah menebak. */
+  chain: ChainConfig;
+  /** Plafon coverage DIBACA DARI CHAIN, bukan dari addresses.*.json — nilainya
+   *  `onlyOwner`-settable, jadi angka di JSON bisa basi tanpa peringatan. */
+  maxDeclaredValue: bigint;
   certId: bigint;
   entryId: bigint;
   declaredValue: bigint;
@@ -78,7 +92,11 @@ export function deriveStatus(c: CertView): CertStatus {
 
 export class CertNotFoundError extends Error {}
 
-export async function loadCert(certId: bigint): Promise<CertView> {
+export async function loadCert(c: ChainConfig, certId: bigint): Promise<CertView> {
+  const client = clientFor(c);
+  const CERT = c.contracts.certificate as `0x${string}`;
+  const REGISTRY = c.contracts.registry as `0x${string}`;
+
   // Reads paralel; TANPA multicall3 — belum diverifikasi ter-deploy di 1952.
   let cert, holder, uri, coverageActive;
   try {
@@ -93,12 +111,15 @@ export async function loadCert(certId: bigint): Promise<CertView> {
     throw err;
   }
 
-  const [entry, challenges] = await Promise.all([
+  const [entry, challenges, maxDeclaredValue] = await Promise.all([
     client.readContract({ address: REGISTRY, abi: CachetRegistryAbi, functionName: "getEntry", args: [cert.entryId] }),
-    loadChallenges(certId),
+    loadChallenges(c, certId),
+    client.readContract({ address: CERT, abi: CachetCertificateAbi, functionName: "maxDeclaredValue" }),
   ]);
 
   return {
+    chain: c,
+    maxDeclaredValue,
     certId,
     entryId: cert.entryId,
     declaredValue: cert.declaredValue,
@@ -123,7 +144,10 @@ export async function loadCert(certId: bigint): Promise<CertView> {
  *  membatasi eth_getLogs ke rentang 100 blok (diverifikasi 22 Jul), jadi
  *  "sejak blok deploy" mustahil. challengeCount kecil selama bootstrap —
  *  iterasi state selalu jalan; tx hash dilengkapi best-effort di bawah. */
-async function loadChallenges(certId: bigint): Promise<ChallengeRow[]> {
+async function loadChallenges(c: ChainConfig, certId: bigint): Promise<ChallengeRow[]> {
+  const client = clientFor(c);
+  const CHALLENGE = c.contracts.challengeManager as `0x${string}`;
+
   const count = await client.readContract({
     address: CHALLENGE,
     abi: ChallengeManagerAbi,
@@ -145,7 +169,7 @@ async function loadChallenges(certId: bigint): Promise<ChallengeRow[]> {
     all
       .filter(({ ch }) => ch[0] === certId)
       .map(async ({ challengeId, ch }) => {
-        const { openedTx, resolvedTx } = await findChallengeTxs(challengeId, BigInt(ch[2]));
+        const { openedTx, resolvedTx } = await findChallengeTxs(c, challengeId, BigInt(ch[2]));
         return {
           challengeId,
           challenger: ch[1],
@@ -164,11 +188,14 @@ async function loadChallenges(certId: bigint): Promise<ChallengeRow[]> {
  *  jendela (liveness produksi 2 hari) → resolvedTx null; UI sudah punya
  *  fallback link. Gagal total → link kosong, halaman tetap berdiri. */
 async function findChallengeTxs(
+  c: ChainConfig,
   challengeId: bigint,
   openedAt: bigint,
 ): Promise<{ openedTx: string | null; resolvedTx: string | null }> {
+  const client = clientFor(c);
+  const CHALLENGE = c.contracts.challengeManager as `0x${string}`;
   try {
-    const openBlock = await findBlockByTimestamp(openedAt);
+    const openBlock = await findBlockByTimestamp(c, openedAt);
     const [opened, resolved] = await Promise.all([
       client.getContractEvents({
         address: CHALLENGE,
@@ -196,8 +223,9 @@ async function findChallengeTxs(
   }
 }
 
-async function findBlockByTimestamp(target: bigint): Promise<bigint> {
-  let lo = DEPLOY_BLOCK;
+async function findBlockByTimestamp(c: ChainConfig, target: bigint): Promise<bigint> {
+  const client = clientFor(c);
+  let lo = c.deployBlock;
   let hi = (await client.getBlock({ blockTag: "latest" })).number;
   while (lo < hi) {
     const mid = (lo + hi) / 2n;

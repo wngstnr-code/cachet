@@ -3,9 +3,22 @@
 //
 // `as const` WAJIB: itu yang memberi viem inferensi tipe penuh.
 
-import addresses from "./addresses.testnet.json";
+import addressesTestnet from "./addresses.testnet.json";
+import addressesMainnet from "./addresses.mainnet.json";
 
-export { addresses };
+/** Deployment per chainId. Kedua file berbentuk identik, jadi consumer
+ *  bisa memilih salah satunya tanpa percabangan tipe. */
+export const addressesByChain = {
+  1952: addressesTestnet,
+  196: addressesMainnet,
+} as const;
+
+export type SupportedChainId = keyof typeof addressesByChain;
+
+/** Default historis = testnet. DIPERTAHANKAN supaya consumer lama tidak
+ *  berubah arti diam-diam; kode baru sebaiknya memilih lewat addressesByChain. */
+export const addresses = addressesTestnet;
+export { addressesTestnet, addressesMainnet };
 
 /** Registry first-seen + commit-reveal */
 export const CachetRegistryAbi = [

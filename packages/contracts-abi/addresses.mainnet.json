@@ -1,0 +1,47 @@
+{
+  "_comment": "Bentuk file ini WAJIB identik dengan addresses.testnet.json — consumer (cert page, gateway) memilih salah satunya berdasarkan chainId, jadi kunci yang berbeda antar-file akan gagal senyap di satu chain saja.",
+  "status": "DEPLOYED",
+  "chain": {
+    "name": "X Layer",
+    "chainId": 196,
+    "rpcUrl": "https://rpc.xlayer.tech",
+    "explorer": "https://www.oklink.com/xlayer",
+    "gasToken": "OKB",
+    "_comment": "Explorer memakai OKLink: itu block explorer yang ditetapkan Safe untuk chain 196 di config resminya, dan pola /address /tx-nya konsisten."
+  },
+  "contracts": {
+    "registry": "0x4A88e9B882C3109e8D786e5e075ccC004b5188D6",
+    "certificate": "0xa372e0Ae92172928D7800F32542414fC595E4FEF",
+    "vault": "0x89893D5DDedAf7C6b04Cde7B9101e12F7Cc0a9f4",
+    "challengeManager": "0xF3a222E0f58B664ae356035290757dD3A5C765a7",
+    "mockUSDT": "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
+    "_comment": "Kunci 'mockUSDT' dipertahankan demi kesamaan bentuk dengan file testnet — tapi di mainnet isinya USD₮0 SUNGGUHAN, bukan mock. Tidak ada MockUSDT di chain 196; DeployMockUSDT.s.sol menolak deploy ke sana. Baca nilainya sebagai payToken, dan pakai blok payToken di bawah kalau butuh simbol/desimal."
+  },
+  "roles": {
+    "gateway": "0x8BCC23b3352e9c450160676803AC5cfe1e2329e1",
+    "resolver": "0xE6b38687B18e75631086b9b39ca0406b6a0F9268",
+    "_comment": "resolver di mainnet adalah Safe multisig 2-dari-3, bukan EOA — tidak ada satu private key yang bisa memutus gugatan sendirian. Deploy.s.sol menolak resolver tanpa bytecode di chain 196. Kedua alamat TERKUNCI sejak deploy (set-once)."
+  },
+  "payToken": {
+    "address": "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
+    "symbol": "USD₮0",
+    "decimals": 6,
+    "_comment": "USD₮0 kanonik di X Layer — BUKAN USDT bridged lama di 0x1e4a5963abfd975d8c9021ce480b42188849d41d. Keduanya token berbeda dan tidak saling tertukar. 6 DESIMAL: semua nilai uang di API adalah base unit, 1 USDT = 1000000."
+  },
+  "params": {
+    "waitingPeriodSeconds": 259200,
+    "coverageTermSeconds": 31536000,
+    "maxDeclaredValue": 2000000,
+    "fraudBondAmount": 1000000,
+    "premiumBps": 200,
+    "challengeBond": 1000000,
+    "livenessWindowSeconds": 172800,
+    "_comment": "Nilai bootstrap mainnet (SetMainnetParams.s.sol) — SENGAJA jauh lebih kecil dari testnet. Plafon 2 USDT disetel <= isi vault supaya klaim penuh benar-benar bisa dibayar; plafon yang lebih besar tidak gagal keras, ia diam-diam jadi PartialPayout. Bisa berubah lewat setter onlyOwner — BACA DARI CHAIN, jangan hardcode."
+  },
+  "deployment": {
+    "deployedAt": "2026-07-25T17:19:56+00:00",
+    "blockNumber": 66230960,
+    "deployerAddress": "0x4e7691FA710D488F1D2CD6d22619eb325bf99eBd",
+    "verifiedOnSourcify": true
+  }
+}
