@@ -10,11 +10,22 @@ Pakai: make demo-links
 """
 
 import json
+import os
 import pathlib
 import sys
 
-CHAIN_ID = "1952"
-EXPLORER = "https://www.okx.com/web3/explorer/xlayer-test"
+# Demo hanya jalan di testnet (dipagari on-chain di DemoFlow/PrepareDemo), tapi
+# CHAIN_ID tetap dibaca dari .env root supaya tautan tidak diam-diam menunjuk ke
+# explorer yang salah kalau nanti ada babak lain di chain lain.
+CHAIN_ID = os.environ.get("CHAIN_ID", "1952")
+EXPLORER_BY_CHAIN = {
+    "1952": "https://www.okx.com/web3/explorer/xlayer-test",
+    "196": "https://www.okx.com/web3/explorer/xlayer",
+}
+EXPLORER = EXPLORER_BY_CHAIN.get(CHAIN_ID)
+
+if EXPLORER is None:
+    sys.exit(f"CHAIN_ID={CHAIN_ID} tidak dikenal (yang didukung: {', '.join(EXPLORER_BY_CHAIN)})")
 
 # Nama fungsi -> babak dalam cerita demo, dalam urutan Golden Path.
 # Label bahasa Inggris: output ini ditempel untuk juri internasional.

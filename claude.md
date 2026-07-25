@@ -123,7 +123,15 @@ Produk ini menjual kepercayaan, jadi klaimnya harus tepat. **Jangan pernah menul
 | "trustless adjudication" | "adjudikasi resolver + jendela liveness publik (MVP)" |
 
 Batasan yang wajib diakui apa adanya: registry = korpus kami, **bukan seluruh internet**;
-coverage berplafon 100 USDT selama bootstrap; adjudikasi MVP masih tersentralisasi.
+coverage berplafon **`maxDeclaredValue` on-chain** dan dibatasi saldo vault; adjudikasi MVP
+masih tersentralisasi (multisig menghapus risiko kunci tunggal, **bukan** sentralisasinya).
+
+> **Jangan menulis angka plafon secara hardcode di dokumen mana pun.** Plafon adalah
+> parameter `onlyOwner` yang berbeda per deployment (testnet 100 USDT · bootstrap mainnet
+> 2 USDT) dan bisa berubah kapan saja lewat `ParamChanged`. Angka yang di-hardcode akan
+> basi diam-diam, dan plafon yang diiklankan lebih besar dari yang bisa dibayar vault
+> adalah persis klaim palsu yang aturan di bagian ini ada untuk mencegah. Rujuk
+> parameternya, atau sebutkan angkanya **beserta chain-nya**.
 
 ---
 

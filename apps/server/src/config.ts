@@ -55,6 +55,18 @@ export interface Config {
 
 const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
 const X_LAYER_TESTNET = "eip155:1952" as const;
+const X_LAYER_MAINNET = "eip155:196" as const;
+
+/**
+ * Network yang boleh diiklankan di challenge 402.
+ *
+ * Mainnet ditambahkan karena reviewer OKX.AI menolak listing ASP yang challenge
+ * 402-nya tidak menyebut CAIP-2 `eip155:196`. Nilai ini bukan sekadar label:
+ * ia yang memberi tahu agent pembeli di chain mana pembayaran harus dikirim.
+ */
+const ALLOWED_NETWORKS = [X_LAYER_TESTNET, X_LAYER_MAINNET] as const;
+type AllowedNetwork = (typeof ALLOWED_NETWORKS)[number];
+
 const OKX_PAYMENT_BASE_URL = "https://web3.okx.com";
 
 function requireHttpsUrl(value: string, name: string): string {
@@ -89,8 +101,20 @@ export function loadX402Options(
     };
   }
 
-  if (network !== X_LAYER_TESTNET) {
-    throw new Error(`X402_NETWORK untuk deployment ini wajib ${X_LAYER_TESTNET}`);
+  if (!ALLOWED_NETWORKS.includes(network as AllowedNetwork)) {
+    throw new Error(`X402_NETWORK wajib salah satu dari ${ALLOWED_NETWORKS.join(" atau ")}`);
+  }
+
+  // Network yang diiklankan WAJIB chain yang benar-benar dipakai gateway.
+  // Kalau keduanya berbeda, agent pembeli mengirim dana ke chain yang salah dan
+  // dana itu tidak bisa ditarik kembali — kegagalan senyap yang jauh lebih mahal
+  // daripada gateway yang menolak menyala.
+  const expectedNetwork = `eip155:${defaults.chainId}`;
+  if (network !== expectedNetwork) {
+    throw new Error(
+      `X402_NETWORK (${network}) tidak cocok dengan chain gateway (${expectedNetwork}). ` +
+        "Samakan X402_NETWORK dengan CHAIN_ID.",
+    );
   }
   const resourceBase = requireHttpsUrl(resourceBaseRaw, "X402_RESOURCE_BASE");
   const baseUrl = requireHttpsUrl(env.OKX_BASE_URL ?? OKX_PAYMENT_BASE_URL, "OKX_BASE_URL");

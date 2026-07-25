@@ -25,11 +25,19 @@ contracts/broadcast/**/dry-run/
 # deploy testnet — bukti on-chain yang dipakai saat serah-terima H3.
 
 # env — NEVER commit real secrets (private keys, API keys, Supabase creds)
+# `.env.*` (bukan cuma `.env.local`) karena deploy per-chain memakai file
+# terpisah seperti .env.mainnet — pola lama tidak menangkapnya, dan file berisi
+# DEPLOYER_PK mainnet yang lolos ke git tidak bisa ditarik kembali.
 .env
-.env.local
+.env.*
 *.local
 env-*.txt
+
+# Template WAJIB tetap ter-track — pengecualian ini harus di bawah `.env.*`,
+# kalau tidak polanya menelan template juga dan onboarding jadi rusak.
 !.env.example
+!.env.mainnet.example
+.env.mainnet
 
 # logs
 *.log

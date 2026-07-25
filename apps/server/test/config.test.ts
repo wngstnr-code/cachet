@@ -38,10 +38,32 @@ describe("x402 runtime config", () => {
     },
   );
 
-  it("menolak network selain X Layer Testnet", () => {
+  it("menerima config mainnet lengkap (eip155:196)", () => {
+    const options = loadX402Options(
+      { ...completeEnv, X402_NETWORK: "eip155:196" },
+      { chainId: 196, payTo: PAY_TO },
+    );
+    expect(options.bypass).toBe(false);
+    expect(options.network).toBe("eip155:196");
+  });
+
+  it("menolak network di luar X Layer", () => {
+    expect(() =>
+      loadX402Options({ ...completeEnv, X402_NETWORK: "eip155:1" }, { chainId: 1952, payTo: PAY_TO }),
+    ).toThrow(/wajib salah satu dari/);
+  });
+
+  // Justru inilah kegagalan yang paling mahal: gateway berjalan di satu chain
+  // tapi mengiklankan chain lain di challenge 402 — pembeli mengirim dana ke
+  // chain yang salah dan dana itu hilang. Lebih baik gateway menolak menyala.
+  it("menolak network yang tidak cocok dengan chain gateway", () => {
     expect(() =>
       loadX402Options({ ...completeEnv, X402_NETWORK: "eip155:196" }, { chainId: 1952, payTo: PAY_TO }),
-    ).toThrow(/eip155:1952/);
+    ).toThrow(/tidak cocok dengan chain gateway/);
+
+    expect(() =>
+      loadX402Options({ ...completeEnv, X402_NETWORK: "eip155:1952" }, { chainId: 196, payTo: PAY_TO }),
+    ).toThrow(/tidak cocok dengan chain gateway/);
   });
 
   it("menolak payTo bukan alamat EVM", () => {

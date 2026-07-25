@@ -107,8 +107,21 @@ preflight() {
   assert_equals X402_BYPASS 0
   assert_equals DEMO_MODE 0
   assert_equals CHAIN_MODE viem
-  assert_equals CHAIN_ID 1952
-  assert_equals X402_NETWORK eip155:1952
+
+  # Chain: testnet (1952) atau mainnet (196). Yang TIDAK boleh longgar adalah
+  # kecocokan antara CHAIN_ID dan X402_NETWORK -- gateway yang berjalan di satu
+  # chain tapi mengiklankan chain lain di challenge 402 membuat agent pembeli
+  # mengirim dana ke chain yang salah, dan dana itu tidak bisa ditarik kembali.
+  # Kegagalan senyap, jauh lebih mahal daripada deploy yang menolak jalan.
+  local chain_id x402_network
+  chain_id="$(env_value "${RUNTIME_ENV}" CHAIN_ID)"
+  x402_network="$(env_value "${RUNTIME_ENV}" X402_NETWORK)"
+  case "${chain_id}" in
+    1952 | 196) ;;
+    *) die "CHAIN_ID must be 1952 (X Layer Testnet) or 196 (X Layer Mainnet), got ${chain_id}" ;;
+  esac
+  [[ "${x402_network}" == "eip155:${chain_id}" ]] \
+    || die "X402_NETWORK must be eip155:${chain_id} to match CHAIN_ID, got ${x402_network}"
 
   assert_matches GATEWAY_PK '^0x[0-9a-fA-F]{64}$'
   for address_key in ADDR_REGISTRY ADDR_CERTIFICATE ADDR_VAULT ADDR_CHALLENGE ADDR_MOCKUSDT; do
@@ -231,7 +244,19 @@ smoke_public() {
     --data '{}')"
   [[ "${status}" == "402" ]] || die "unpaid public verify returned ${status}, expected 402"
 
-  curl --fail --silent --show-error "${PUBLIC_URL}/v1/cert/6" >/dev/null
+  # Cert #6 hanya ada di deployment testnet. Deployment mainnet yang baru berdiri
+  # belum punya sertifikat sama sekali, jadi id-nya dibuat bisa disetel -- dan
+  # dilewati kalau memang belum ada yang diterbitkan.
+  #
+  # Sengaja TIDAK diam-diam dilewati saat gagal: kalau id disetel, kegagalannya
+  # nyata. Yang boleh dilewati hanya kondisi "belum ada sertifikat", dan itu
+  # dinyatakan eksplisit lewat CACHET_SMOKE_CERT_ID=none.
+  local cert_id="${CACHET_SMOKE_CERT_ID:-6}"
+  if [[ "${cert_id}" == "none" ]]; then
+    log "public HTTPS and x402 rejection smoke checks passed (certificate check skipped)"
+    return 0
+  fi
+  curl --fail --silent --show-error "${PUBLIC_URL}/v1/cert/${cert_id}" >/dev/null
   log "public HTTPS, x402 rejection, and certificate smoke checks passed"
 }
 

@@ -36,6 +36,7 @@ remappings = [
 # atau `source ../.env` dulu.
 [rpc_endpoints]
 xlayer_testnet = "${RPC_URL}"
+xlayer_mainnet = "${RPC_URL}"
 
 # Lint hanya menilai src/ — itu satu-satunya kode yang benar-benar ter-deploy.
 # Test SENGAJA melakukan hal yang dilarang lint: cast uint64(block.timestamp),

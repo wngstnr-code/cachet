@@ -94,7 +94,7 @@ Paid endpoints (`/v1/verify`, `/v1/mint`) answer HTTP **402** with an [x402](htt
 We sell trust, so the fine print is the product:
 
 - **The registry is our corpus, not the internet.** "First-seen" means first seen by Cachet.
-- **Coverage is capped at 100 USDT** per certificate during bootstrap.
+- **Coverage is capped**, and the cap differs per deployment: **100 USDT** on X Layer Testnet, **2 USDT** on the X Layer mainnet bootstrap. It is an on-chain parameter (`maxDeclaredValue`) and is further bounded by the vault balance — read it from the contract rather than trusting this page. A claim can only ever pay what the vault actually holds, so the advertised cap is kept at or below the funded amount.
 - **Adjudication is a single resolver in this MVP**, constrained by a public liveness window and published admissible-evidence rules ([`contracts/RESOLVER.md`](contracts/RESOLVER.md)). Trustless adjudication it is not, yet — the roadmap is a decentralized oracle set (3+ independent resolvers), not a single key.
 - **The embedding tier is advisory.** Only the deterministic perceptual-hash ensemble backs hard claims; there is no "AI detector" here.
 - Everything runs on **X Layer Testnet** with a test USDT token.
@@ -119,7 +119,7 @@ We sell trust, so the fine print is the product:
 | ChallengeManager | [`0x8BF7…E664`](https://www.okx.com/web3/explorer/xlayer-test/address/0x8BF7551F7e9CB432EbA5fFC21972Bce7f509E664) | [Sourcify](https://repo.sourcify.dev/1952/0x8BF7551F7e9CB432EbA5fFC21972Bce7f509E664) |
 | MockUSDT (pay token, 6 decimals) | [`0x9ad1…fa40`](https://www.okx.com/web3/explorer/xlayer-test/address/0x9ad14e783DCe270BE1214153E940aa686f91fa40) | [Sourcify](https://repo.sourcify.dev/1952/0x9ad14e783DCe270BE1214153E940aa686f91fa40) |
 
-Parameters live on-chain and are readable by anyone: premium 2% of declared value, fraud bond 5 USDT, challenge bond 10 USDT, coverage cap 100 USDT.
+Parameters live on-chain and are readable by anyone. On **testnet** (above): premium 2% of declared value, fraud bond 5 USDT, challenge bond 10 USDT, coverage cap 100 USDT. The **mainnet bootstrap** deployment runs the same contracts with smaller, fully funded numbers: fraud bond 1 USDT, challenge bond 1 USDT, coverage cap 2 USDT, premium unchanged at 2%.
 
 ## Run it yourself
 

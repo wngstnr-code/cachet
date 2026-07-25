@@ -121,6 +121,37 @@ cast send $ADDR_CHALLENGE \
   --rpc-url $RPC_URL --private-key $RESOLVER_PK
 ```
 
+### 4b. Di MAINNET: resolver adalah Safe, bukan EOA
+
+Dua perintah di atas **tidak berlaku di mainnet.** Safe tidak punya private key
+tunggal, jadi tidak ada `RESOLVER_PK` yang bisa ditempel ke `--private-key` —
+`Deploy.s.sol` bahkan menolak deploy ke chain 196 kalau `RESOLVER_ADDR` bukan
+kontrak.
+
+Putusan dieksekusi sebagai transaksi Safe:
+
+1. Buka [app.safe.global](https://app.safe.global) → pilih jaringan **X Layer**
+   → buka Safe resolver.
+2. **New transaction → Transaction Builder**.
+3. Isi:
+   - To: alamat `ADDR_CHALLENGE`
+   - ABI: tempel ABI `ChallengeManager` dari `packages/contracts-abi/abi/`
+   - Method: `resolve`
+   - `challengeId` = id gugatan · `challengerWins` = `true`/`false` ·
+     `rulingURI` = URI putusan
+4. **Create Batch → Send Batch.** Pemilik pertama menandatangani; transaksi
+   **belum tereksekusi**.
+5. Pemilik kedua membuka Safe yang sama, memeriksa ulang isi transaksi, lalu
+   **Confirm & Execute**. Baru pada titik ini putusan mendarat on-chain.
+
+Yang berubah secara operasional: **putusan butuh dua orang dan tidak instan.**
+Itu memang tujuannya — tapi berarti jendela liveness harus disetel cukup panjang
+untuk menampung koordinasi manusia, bukan hanya waktu blok.
+
+> Verifikasi `to` dan seluruh argumen di layar penanda tangan **kedua**, bukan
+> hanya di layar yang pertama. Penanda tangan kedua adalah satu-satunya
+> pemeriksaan yang tersisa sebelum putusan menjadi final dan tak bisa dibatalkan.
+
 ## 5. Yang terjadi setelah putusan
 
 **Penantang menang:**
@@ -147,3 +178,36 @@ Karena itu jangan memutus tanpa menyelesaikan checklist §3.
   tetap.
 - Testnet-only. Kalau nanti pindah mainnet, buat kunci baru — jangan pernah
   pakai ulang kunci yang pernah muncul di terminal atau chat.
+
+### Mainnet: Safe multisig
+
+Di chain 196 resolver adalah **Safe**, dan `Deploy.s.sol` menolak alamat tanpa
+bytecode. Yang berubah dibanding testnet:
+
+| | Testnet (1952) | Mainnet (196) |
+|---|---|---|
+| Resolver | EOA, satu kunci | Safe, M-dari-N |
+| Eksekusi putusan | `cast send --private-key` | app.safe.global (§4b) |
+| Satu kunci bocor | penyerang menguras vault | belum cukup — perlu M kunci |
+| Satu kunci hilang | **gugatan mati permanen (C1)** | Safe tetap jalan selama ≥ M pemilik hidup |
+
+**Safe harus dibuat SEBELUM `make deploy`.** `setResolver` set-once: alamat Safe
+harus sudah ada untuk diisikan ke `RESOLVER_ADDR`.
+
+Penyetelan yang disarankan, dan alasannya:
+
+- **Threshold 2-dari-3.** 1-dari-N tidak menambah keamanan apa pun (satu kunci
+  tetap cukup untuk memutus). N-dari-N berarti satu kunci hilang mematikan
+  sistem — persis risiko C1 yang ingin dihilangkan.
+- **Tiga pemilik di tiga tempat berbeda** — mis. hardware wallet, laptop, dan
+  kunci cadangan offline. Tiga kunci di satu laptop hanya multisig di atas
+  kertas: satu laptop hilang, ketiganya hilang.
+- **Jangan jadikan deployer atau gateway sebagai pemilik Safe.** Itu mengembalikan
+  penggabungan peran yang dilarang invariant §9.6 lewat pintu belakang.
+- **Uji satu putusan di testnet lebih dulu** dengan Safe testnet, sebelum ada
+  uang sungguhan yang bergantung padanya.
+
+Yang **tidak** diselesaikan multisig, dan harus tetap diakui apa adanya: pemutus
+tetap operator Cachet, bukan mekanisme terdesentralisasi. Multisig menghapus
+titik gagal *kunci tunggal* (C1) — ia tidak menghapus *adjudikasi tersentralisasi*
+(A1). Jangan menulis "trustless" karena sudah memakai Safe.

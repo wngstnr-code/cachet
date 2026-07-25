@@ -35,6 +35,14 @@ import {MockUSDT} from "../src/MockUSDT.sol";
 ///        t=~10 gugatan   -> liveness sampai t+40
 ///        t=40  resolve   -> 40 > 10, coverage sudah aktif
 contract PrepareDemo is Script {
+    /// @dev Script ini memampatkan `waitingPeriod` jadi 10 detik dan
+    ///      `livenessWindow` jadi 30 detik. Di testnet itu pemampatan demo yang
+    ///      jujur dan tercatat; di mainnet itu MELUCUTI dua rem keselamatan dari
+    ///      sertifikat yang menjamin uang orang lain. Tidak ada alasan sah
+    ///      menjalankannya di 196 -- jadi ditolak di sini, bukan diserahkan ke
+    ///      kehati-hatian operator jam 3 pagi.
+    uint256 internal constant XLAYER_TESTNET = 1952;
+
     uint64 internal constant DEMO_WAITING_PERIOD = 10 seconds;
     uint64 internal constant DEMO_LIVENESS_WINDOW = 30 seconds;
 
@@ -44,6 +52,8 @@ contract PrepareDemo is Script {
     uint256 internal constant ACTOR_FUNDING = 200e6; // per pemeran
 
     function run() external {
+        require(block.chainid == XLAYER_TESTNET, "PrepareDemo: testnet (1952) saja, JANGAN di mainnet");
+
         uint256 deployerPk = vm.envUint("DEPLOYER_PK");
         address deployer = vm.addr(deployerPk);
 

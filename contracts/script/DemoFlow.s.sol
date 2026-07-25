@@ -32,6 +32,8 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 ///      BARU (phash diacak dari block.timestamp), jadi tidak bertabrakan
 ///      dengan sertifikat dari take sebelumnya.
 contract DemoFlow is Script {
+    uint256 internal constant XLAYER_TESTNET = 1952;
+
     uint256 internal constant DECLARED_VALUE = 50e6; // 50 USDT
     uint256 internal constant FRAUD_BOND = 5e6;
 
@@ -60,6 +62,13 @@ contract DemoFlow is Script {
     }
 
     function _ctx() internal view returns (Ctx memory c) {
+        // Chokepoint: run(), challengeCert(), dan resolve() semuanya lewat sini,
+        // jadi satu pagar di titik ini menutup ketiganya. Skrip ini mencetak
+        // MockUSDT dan memakai parameter hasil pemampatan `make demo-prep` --
+        // keduanya tidak ada di mainnet, dan kalaupun ada, sertifikat demo
+        // tidak boleh bercampur dengan sertifikat yang menjamin uang sungguhan.
+        require(block.chainid == XLAYER_TESTNET, "DemoFlow: testnet (1952) saja, JANGAN di mainnet");
+
         c.usdt = MockUSDT(vm.envAddress("ADDR_MOCKUSDT"));
         c.cert = CachetCertificate(vm.envAddress("ADDR_CERTIFICATE"));
         c.vault = CachetVault(vm.envAddress("ADDR_VAULT"));

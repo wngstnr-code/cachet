@@ -2,12 +2,13 @@
 pragma solidity ^0.8.24;
 
 import {Script, console} from "forge-std/Script.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {CachetRegistry} from "../src/CachetRegistry.sol";
 import {CachetCertificate} from "../src/CachetCertificate.sol";
 import {CachetVault} from "../src/CachetVault.sol";
 import {ChallengeManager} from "../src/ChallengeManager.sol";
 
-/// @notice Deploy + wiring keempat kontrak inti ke X Layer Testnet (1952).
+/// @notice Deploy + wiring keempat kontrak inti ke X Layer (1952 testnet / 196 mainnet).
 /// @dev Jalankan lewat `make deploy` supaya .env root terbaca dan verifikasi
 ///      Sourcify ikut jalan.
 ///
@@ -17,9 +18,19 @@ import {ChallengeManager} from "../src/ChallengeManager.sol";
 ///      dengan alamat nol) berjam-jam setelah deploy dianggap sukses.
 contract Deploy is Script {
     uint256 internal constant XLAYER_TESTNET = 1952;
+    uint256 internal constant XLAYER_MAINNET = 196;
+
+    /// @dev Seluruh angka Cachet (`MAX_DECLARED_VALUE = 100e6`, bond `5e6`/`10e6`,
+    ///      premi `declaredValue * 200 / 10000`) mengasumsikan payToken 6 desimal.
+    ///      Token 18 desimal tetap ter-deploy dan ter-wiring tanpa keluhan, lalu
+    ///      salah seribu miliar kali secara diam-diam saat runtime.
+    uint8 internal constant REQUIRED_PAY_TOKEN_DECIMALS = 6;
 
     function run() external {
-        require(block.chainid == XLAYER_TESTNET, "Deploy: hanya X Layer Testnet (1952)");
+        require(
+            block.chainid == XLAYER_TESTNET || block.chainid == XLAYER_MAINNET,
+            "Deploy: hanya X Layer (1952 testnet / 196 mainnet)"
+        );
 
         uint256 pk = vm.envUint("DEPLOYER_PK");
         address deployer = vm.addr(pk);
@@ -33,6 +44,11 @@ contract Deploy is Script {
         require(gatewayAddr != deployer, "GATEWAY_ADDR tidak boleh sama dengan deployer (sec 9.6)");
         require(resolverAddr != deployer, "RESOLVER_ADDR tidak boleh sama dengan deployer (sec 9.6)");
         require(resolverAddr != gatewayAddr, "RESOLVER_ADDR tidak boleh sama dengan GATEWAY_ADDR (sec 9.6)");
+
+        // payToken salah = seluruh sistem salah, dan gejalanya baru muncul saat
+        // klaim pertama. Dicek SEBELUM broadcast supaya gagalnya gratis.
+        _assertPayToken(payTokenAddr);
+        _assertResolver(resolverAddr);
 
         vm.startBroadcast(pk);
 
@@ -66,6 +82,45 @@ contract Deploy is Script {
         _log(registry, certificate, vault, challengeManager);
     }
 
+    /// @dev Pagar payToken. Di mainnet ADDR_MOCKUSDT diisi USDT ASLI — tidak ada
+    ///      MockUSDT yang boleh ter-deploy ke 196 (lihat DeployMockUSDT.s.sol).
+    ///      Yang diperiksa di sini bukan "apakah ini USDT yang benar" (itu tidak
+    ///      bisa dibuktikan dari dalam kontrak), melainkan dua hal yang bisa:
+    ///      alamatnya memang kontrak, dan desimalnya 6.
+    function _assertPayToken(address payTokenAddr) internal view {
+        require(payTokenAddr.code.length > 0, "ADDR_MOCKUSDT bukan kontrak di chain ini");
+
+        uint8 dec = IERC20Metadata(payTokenAddr).decimals();
+        require(dec == REQUIRED_PAY_TOKEN_DECIMALS, "payToken wajib 6 desimal (lihat README)");
+    }
+
+    /// @dev Di mainnet resolver WAJIB kontrak (multisig), bukan EOA.
+    ///
+    ///      `ChallengeManager.setResolver` bersifat set-once: identitas pemutus
+    ///      terkunci sejak deploy dan tidak bisa diganti tanpa redeploy seluruh
+    ///      sistem (risiko C1 di README). Artinya EOA yang salah ter-paste bukan
+    ///      kesalahan yang bisa diperbaiki lima menit kemudian -- ia permanen,
+    ///      dan satu kunci yang bocor atau hilang mematikan seluruh jalur gugatan
+    ///      untuk selamanya.
+    ///
+    ///      Yang bisa diperiksa dari sini hanya "ada bytecode di alamat itu",
+    ///      bukan "ini benar Safe dengan threshold 2-dari-3". Sisanya tanggung
+    ///      jawab operator -- lihat RESOLVER.md. Pagar ini menangkap kesalahan
+    ///      yang paling mungkin dan paling mahal, bukan seluruhnya.
+    ///
+    ///      Testnet tetap boleh EOA: demo butuh resolver yang bisa menandatangani
+    ///      sendiri tanpa koordinasi dua orang di tengah rekaman.
+    function _assertResolver(address resolverAddr) internal view {
+        bool isContract = resolverAddr.code.length > 0;
+
+        if (block.chainid == XLAYER_MAINNET) {
+            require(isContract, "RESOLVER_ADDR wajib multisig (kontrak) di mainnet, bukan EOA");
+            console.log("resolver: kontrak (multisig) -- OK untuk mainnet");
+        } else {
+            console.log("resolver: EOA -- diizinkan di testnet saja");
+        }
+    }
+
     /// @dev Setiap tautan diperiksa. Gagal di sini = deploy tidak boleh dipakai.
     function _assertWiring(
         CachetRegistry registry,
@@ -97,9 +152,10 @@ contract Deploy is Script {
         CachetCertificate certificate,
         CachetVault vault,
         ChallengeManager challengeManager
-    ) internal pure {
+    ) internal view {
         console.log("");
         console.log("=== ALAMAT (salin ke .env root + packages/contracts-abi) ===");
+        console.log("chainId         =", block.chainid);
         console.log("ADDR_REGISTRY   =", address(registry));
         console.log("ADDR_CERTIFICATE=", address(certificate));
         console.log("ADDR_VAULT      =", address(vault));
