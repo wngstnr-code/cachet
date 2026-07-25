@@ -1,7 +1,17 @@
-import type { CertView, ChallengeRow, CertStatus } from "./chain";
+import type { CertSummary, CertView, ChallengeRow, CertStatus } from "./chain";
 import { ChallengeStatus, deriveStatus, resolveURI } from "./chain";
 import type { ChainConfig, ChainKey } from "./config";
-import { CHAINS, CHAIN_KEYS, explorerAddress, explorerTx, homePath, sourcifyAddress } from "./config";
+import {
+  ASP_URL,
+  CHAINS,
+  CHAIN_KEYS,
+  certPath,
+  explorerAddress,
+  explorerTx,
+  galleryPath,
+  homePath,
+  sourcifyAddress,
+} from "./config";
 import { certAge, esc, fmtDate, fmtDateTime, fmtUSDT, shortAddr, shortHex } from "./format";
 
 /** Pemilih jaringan. Selalu tampil, bahkan saat tidak ada yang bisa dipilih lagi:
@@ -41,16 +51,37 @@ function shortURI(uri: string): string {
   return uri.length > 80 ? `${uri.slice(0, 72)}…` : uri;
 }
 
+/** Ajakan memakai Cachet lewat agent. Muncul di SETIAP halaman.
+ *
+ *  Kata-katanya sengaja tidak menyebut Cachet "terdaftar" atau "tersedia" di
+ *  OKX.AI: listing ASP #7530 masih dalam review saat ini. Mengklaim sudah
+ *  listed adalah klaim palsu — persis jenis yang produk ini ada untuk melawan
+ *  (claude.md §7). Perbarui teks INI, bukan cuma URL-nya, saat listing disetujui. */
+function aspCta(): string {
+  return `<aside class="asp-cta">
+      <div class="asp-cta-text">
+        <strong>Built for AI agents.</strong>
+        Verification and certification are paid per call over x402, so an agent can check a
+        work before buying it — no human in the loop.
+      </div>
+      <a class="asp-cta-link ext" href="${ASP_URL}" target="_blank" rel="noopener">
+        Cachet on OKX.AI
+      </a>
+    </aside>`;
+}
+
 function shell(c: ChainConfig, inner: string, title = ""): string {
   return `
     <div class="page">
       <header class="masthead">
         <a class="brand" href="${homePath(c.key)}"><img class="brand-logo" src="/cachet-logo.svg" alt="" />Cachet</a>
         ${title ? `<span class="sep">/</span><h1>${title}</h1>` : ""}
+        <a class="nav-link" href="${galleryPath(c.key)}">Certificates</a>
         ${chainSwitch(c.key)}
       </header>
       ${testnetNotice(c)}
       ${inner}
+      ${aspCta()}
     </div>`;
 }
 
@@ -74,9 +105,112 @@ export function homeView(c: ChainConfig): string {
           <button type="submit">View certificate</button>
         </form>
         <div class="form-error" id="lookup-error"></div>
+        <a class="home-browse" href="${galleryPath(c.key)}">Browse all certificates &rarr;</a>
         <div class="home-net">${esc(c.name)} · chain ${c.chainId}</div>
+        ${aspCta()}
       </div>
     </div>`;
+}
+
+// ── Galeri ─────────────────────────────────────────────────────────────
+export const STATUS_FILTERS = [
+  "ALL",
+  "ACTIVE",
+  "WAITING",
+  "REVOKED",
+  "EXPIRED",
+  "NOT_INSURABLE",
+] as const;
+export type StatusFilter = (typeof STATUS_FILTERS)[number];
+
+const STATUS_LABEL: Record<StatusFilter, string> = {
+  ALL: "All",
+  ACTIVE: "Active",
+  WAITING: "Waiting",
+  REVOKED: "Revoked",
+  EXPIRED: "Expired",
+  NOT_INSURABLE: "Not insurable",
+};
+
+function statusFilterBar(c: ChainConfig, active: StatusFilter, counts: Record<string, number>): string {
+  const btns = STATUS_FILTERS.map((f) => {
+    const n = f === "ALL" ? Object.values(counts).reduce((a, b) => a + b, 0) : (counts[f] ?? 0);
+    const href = f === "ALL" ? galleryPath(c.key) : `${galleryPath(c.key)}?status=${f}`;
+    return `<a class="filter-btn${f === active ? " is-active" : ""}" href="${href}"
+              data-status="${f}">${STATUS_LABEL[f]} <span class="filter-n">${n}</span></a>`;
+  }).join("");
+  return `<nav class="filter-bar" aria-label="Filter by status">${btns}</nav>`;
+}
+
+function galleryCard(c: ChainConfig, s: CertSummary): string {
+  // tokenURI menunjuk METADATA JSON, bukan gambar — gambarnya ada di field
+  // `image` di dalamnya. Memasang tokenURI langsung sebagai src menghasilkan
+  // tile kosong. Diambil belakangan oleh hydrateThumbs() supaya grid tampil
+  // duluan dan satu URI yang lambat tidak menahan seluruh halaman.
+  const pending = resolveURI(s.tokenURI) !== null;
+  return `<a class="gcard" href="${certPath(c.key, s.certId)}">
+      <div class="gcard-art${s.status === "REVOKED" ? " is-revoked" : ""}"
+           ${pending ? `data-token-uri="${esc(s.tokenURI)}"` : ""}>
+        <span class="gcard-noart">${pending ? "loading preview…" : "no preview"}</span>
+      </div>
+      <div class="gcard-body">
+        <span class="status-word" data-status="${s.status}">${STATUS_LABEL[s.status as StatusFilter] ?? s.status}</span>
+        <div class="gcard-id">Certificate #${s.certId}</div>
+        <div class="gcard-meta">${fmtUSDT(s.declaredValue)} ${esc(c.payTokenSymbol)} · ${certAge(s.mintedAt)}
+          ${s.challengesSurvived > 0 ? ` · survived ${s.challengesSurvived}` : ""}</div>
+      </div>
+    </a>`;
+}
+
+/** Kosong di mainnet bukan error — kontraknya memang baru berdiri. Halaman
+ *  harus mengatakannya apa adanya dan memberi jalan ke depan, bukan spinner
+ *  selamanya atau pesan yang terbaca seperti kegagalan. */
+function galleryEmpty(c: ChainConfig): string {
+  const other = c.key === "mainnet" ? CHAINS.testnet : CHAINS.mainnet;
+  return `<div class="gallery-empty">
+      <h2>No certificates on ${esc(c.name)} yet</h2>
+      <p>The contracts are live and verified on this network, but nothing has been
+         certified through them so far. This page will fill itself straight from the
+         chain as soon as the first work is registered.</p>
+      <p class="gallery-empty-cta">
+        <a class="btn-primary ext" href="${ASP_URL}" target="_blank" rel="noopener">Certify a work through Cachet on OKX.AI</a>
+        <a class="btn-quiet" href="${galleryPath(other.key)}">See ${esc(other.name)} certificates instead</a>
+      </p>
+    </div>`;
+}
+
+export function galleryLoadingView(c: ChainConfig): string {
+  const cards = Array.from({ length: 6 }, () => `<div class="gcard skeleton-card"></div>`).join("");
+  return shell(c, `<div class="gallery-grid">${cards}</div>`, "Certificates");
+}
+
+export function galleryView(
+  c: ChainConfig,
+  rows: CertSummary[],
+  filter: StatusFilter,
+  counts: Record<string, number>,
+  total: bigint,
+  hasMore: boolean,
+): string {
+  if (total === 0n) return shell(c, galleryEmpty(c), "Certificates");
+
+  const shown = filter === "ALL" ? rows : rows.filter((r) => r.status === filter);
+  const grid = shown.length
+    ? `<div class="gallery-grid">${shown.map((s) => galleryCard(c, s)).join("")}</div>`
+    : `<div class="empty-state">No loaded certificate matches this filter.</div>`;
+
+  return shell(
+    c,
+    `${statusFilterBar(c, filter, counts)}
+     ${grid}
+     ${hasMore ? `<div class="gallery-more"><button id="load-more">Load older certificates</button></div>` : ""}
+     <p class="gallery-note">
+       ${total} certificate${total === 1n ? "" : "s"} issued on ${esc(c.name)}. This page reads
+       them directly from the chain with no indexer in between, so it loads the most recent
+       first — the counts above describe what is loaded, not the whole registry.
+     </p>`,
+    "Certificates",
+  );
 }
 
 // ── Loading / error / not found ────────────────────────────────────────

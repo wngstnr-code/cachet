@@ -394,3 +394,146 @@ td.mono, .mono { font-family: var(--mono); font-size: 13px; }
 
 .home-collateral .mono { font-family: var(--mono); font-size: 12px; }
 .home-collateral.is-testnet { color: var(--expired); }
+
+/* ── Navigasi & CTA ──────────────────────────────────────────────────── */
+.nav-link {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-decoration: none;
+  margin-left: 20px;
+}
+.nav-link:hover { color: var(--ink); }
+
+.asp-cta {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin: 56px 0 8px;
+  padding: 18px 20px;
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  background: rgba(31, 77, 58, 0.04);
+}
+.asp-cta-text { flex: 1 1 320px; font-size: 13px; line-height: 1.6; color: var(--neutral); }
+.asp-cta-text strong { color: var(--ink); font-weight: 600; }
+.asp-cta-link {
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: nowrap;
+  padding: 8px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  color: var(--accent);
+  text-decoration: none;
+}
+.asp-cta-link:hover { background: var(--accent); color: var(--accent-ink); }
+.home .asp-cta { margin: 32px 0 0; }
+
+.home-browse {
+  display: inline-block;
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+/* ── Filter status ───────────────────────────────────────────────────── */
+.filter-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 32px; }
+.filter-btn {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 6px 11px;
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+}
+.filter-btn:hover { color: var(--ink); border-color: var(--neutral); }
+.filter-btn.is-active { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.filter-n { opacity: 0.6; margin-left: 4px; }
+
+/* ── Grid galeri ─────────────────────────────────────────────────────── */
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 24px;
+}
+
+.gcard {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  overflow: hidden;
+  background: #fff;
+  transition: border-color 120ms ease, transform 120ms ease;
+}
+.gcard:hover { border-color: var(--neutral); transform: translateY(-2px); }
+
+.gcard-art {
+  aspect-ratio: 4 / 3;
+  display: grid;
+  place-items: center;
+  background: #f2efe9;
+  overflow: hidden;
+}
+.gcard-art img { width: 100%; height: 100%; object-fit: cover; }
+/* Sertifikat dicabut ditandai di grid juga — kalau hanya di halaman detail,
+   galeri terbaca seolah semuanya masih berlaku. */
+.gcard-art.is-revoked img { filter: grayscale(1); opacity: 0.55; }
+.gcard-noart {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.gcard-body { padding: 12px 14px 14px; }
+.gcard-id { font-family: var(--serif); font-size: 16px; margin-top: 6px; }
+.gcard-meta { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+.skeleton-card { aspect-ratio: 4 / 3; background: #f2efe9; border-color: transparent; }
+
+.gallery-more { margin-top: 32px; text-align: center; }
+.gallery-more button {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 9px 18px;
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+.gallery-more button:hover:not(:disabled) { border-color: var(--neutral); }
+.gallery-more button:disabled { color: var(--muted); cursor: default; }
+
+.gallery-note {
+  margin-top: 28px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+/* ── Galeri kosong ───────────────────────────────────────────────────── */
+.gallery-empty { max-width: 46ch; margin: 40px 0; }
+.gallery-empty h2 { font-family: var(--serif); font-size: 22px; margin-bottom: 12px; }
+.gallery-empty p { font-size: 14px; line-height: 1.7; color: var(--neutral); margin-bottom: 16px; }
+.gallery-empty-cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+
+.btn-primary {
+  font-family: var(--sans);
+  font-size: 13px;
+  padding: 10px 16px;
+  border-radius: 2px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  text-decoration: none;
+}
+.btn-primary:hover { opacity: 0.9; }
+.btn-quiet { font-size: 13px; color: var(--muted); }

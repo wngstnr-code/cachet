@@ -82,7 +82,15 @@ export interface CertView {
  *  padahal klaim yang dibuka sekarang hangus (G2). */
 export type CertStatus = "ACTIVE" | "WAITING" | "NOT_INSURABLE" | "REVOKED" | "EXPIRED";
 
-export function deriveStatus(c: CertView): CertStatus {
+/** Sengaja menerima bentuk minimal, bukan CertView penuh: kartu galeri hanya
+ *  memuat sebagian field, dan status HARUS diturunkan dengan aturan yang persis
+ *  sama di kedua tempat — dua salinan logika ini akan berbeda cepat atau lambat. */
+export function deriveStatus(c: {
+  revoked: boolean;
+  insurable: boolean;
+  coverageActive: boolean;
+  coverageStart: bigint;
+}): CertStatus {
   if (c.revoked) return "REVOKED";
   if (!c.insurable) return "NOT_INSURABLE";
   if (c.coverageActive) return "ACTIVE";
@@ -91,6 +99,89 @@ export function deriveStatus(c: CertView): CertStatus {
 }
 
 export class CertNotFoundError extends Error {}
+
+/** Ringkasan untuk kartu galeri — sengaja jauh lebih ringan dari CertView:
+ *  galeri memuat puluhan sertifikat sekaligus, dan getEntry/riwayat gugatan
+ *  akan melipatgandakan jumlah RPC call tanpa menambah apa pun di kartu. */
+export interface CertSummary {
+  certId: bigint;
+  declaredValue: bigint;
+  mintedAt: bigint;
+  coverageStart: bigint;
+  coverageEnd: bigint;
+  insurable: boolean;
+  revoked: boolean;
+  challengesSurvived: number;
+  coverageActive: boolean;
+  tokenURI: string;
+  status: CertStatus;
+}
+
+export const CERT_PAGE_SIZE = 24;
+
+/** Berapa sertifikat yang sudah pernah diterbitkan di chain ini. */
+export async function loadCertCount(c: ChainConfig): Promise<bigint> {
+  return clientFor(c).readContract({
+    address: c.contracts.certificate as `0x${string}`,
+    abi: CachetCertificateAbi,
+    functionName: "certCount",
+  });
+}
+
+/** Halaman galeri: `count` sertifikat TERBARU mulai dari `fromId` menurun.
+ *
+ *  Enumerasi lewat state, bukan log: RPC publik X Layer membatasi eth_getLogs
+ *  ke rentang 100 blok, jadi memindai CertificateMinted sejak blok deploy
+ *  mustahil. Konsekuensi jujurnya — ini pembacaan langsung tanpa indexer, jadi
+ *  biayanya tumbuh linear terhadap jumlah sertifikat. Pola ini cukup selama
+ *  registry masih kecil; kalau nanti ribuan, butuh indexer.
+ *
+ *  Dikirim per potongan supaya RPC publik tidak menerima puluhan permintaan
+ *  serentak lalu membatasi kita. */
+export async function loadCertPage(
+  c: ChainConfig,
+  fromId: bigint,
+  count: number,
+): Promise<CertSummary[]> {
+  const ids: bigint[] = [];
+  for (let id = fromId; id > 0n && ids.length < count; id--) ids.push(id);
+
+  const out: CertSummary[] = [];
+  const CHUNK = 6;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const batch = await Promise.all(ids.slice(i, i + CHUNK).map((id) => loadSummary(c, id)));
+    // Sertifikat yang gagal dibaca dilewati, bukan menjatuhkan seluruh halaman.
+    out.push(...batch.filter((s): s is CertSummary => s !== null));
+  }
+  return out;
+}
+
+async function loadSummary(c: ChainConfig, certId: bigint): Promise<CertSummary | null> {
+  const client = clientFor(c);
+  const CERT = c.contracts.certificate as `0x${string}`;
+  try {
+    const [cert, coverageActive, tokenURI] = await Promise.all([
+      client.readContract({ address: CERT, abi: CachetCertificateAbi, functionName: "certData", args: [certId] }),
+      client.readContract({ address: CERT, abi: CachetCertificateAbi, functionName: "isCoverageActive", args: [certId] }),
+      client.readContract({ address: CERT, abi: CachetCertificateAbi, functionName: "tokenURI", args: [certId] }),
+    ]);
+    const base = {
+      certId,
+      declaredValue: cert.declaredValue,
+      mintedAt: BigInt(cert.mintedAt),
+      coverageStart: BigInt(cert.coverageStart),
+      coverageEnd: BigInt(cert.coverageEnd),
+      insurable: cert.insurable,
+      revoked: cert.revoked,
+      challengesSurvived: cert.challengesSurvived,
+      coverageActive,
+      tokenURI,
+    };
+    return { ...base, status: deriveStatus(base) };
+  } catch {
+    return null;
+  }
+}
 
 export async function loadCert(c: ChainConfig, certId: bigint): Promise<CertView> {
   const client = clientFor(c);
