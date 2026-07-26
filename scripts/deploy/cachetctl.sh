@@ -264,7 +264,21 @@ smoke_public() {
   # Sengaja TIDAK diam-diam dilewati saat gagal: kalau id disetel, kegagalannya
   # nyata. Yang boleh dilewati hanya kondisi "belum ada sertifikat", dan itu
   # dinyatakan eksplisit lewat CACHET_SMOKE_CERT_ID=none.
-  local cert_id="${CACHET_SMOKE_CERT_ID:-6}"
+  #
+  # Dibaca dari deploy.env supaya cukup disetel SEKALI per host. Sebelumnya nilai
+  # ini hanya berasal dari environment shell, jadi operator harus mengetikkannya
+  # ulang di tiap perintah -- dan sekali lupa, deploy mainnet gagal di langkah ini
+  # walau seluruh gateway sehat. Env shell tetap menang supaya bisa ditimpa sekali
+  # jalan tanpa mengedit file.
+  local cert_id="${CACHET_SMOKE_CERT_ID:-}"
+  if [[ -z "${cert_id}" && -f "${DEPLOY_ENV}" ]]; then
+    cert_id="$(env_value "${DEPLOY_ENV}" CACHET_SMOKE_CERT_ID)"
+  fi
+  cert_id="${cert_id:-6}"
+
+  [[ "${cert_id}" == "none" || "${cert_id}" =~ ^[0-9]+$ ]] \
+    || die "CACHET_SMOKE_CERT_ID must be a certificate id or the literal 'none', got ${cert_id}"
+
   if [[ "${cert_id}" == "none" ]]; then
     log "public HTTPS and x402 rejection smoke checks passed (certificate check skipped)"
     return 0

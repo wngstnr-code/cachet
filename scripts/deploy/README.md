@@ -292,7 +292,29 @@ sudo /opt/cachet/cachetctl status
 
 `deploy` melakukan: preflight tanpa print secret → backup konsisten → pull image →
 engine health/corpus gate → gateway health → internal smoke → public HTTPS smoke →
-cek endpoint berbayar tanpa payment mengembalikan 402 → baca cert testnet #6.
+cek endpoint berbayar tanpa payment mengembalikan 402 (**POST dan GET**) → baca satu
+sertifikat nyata.
+
+Cek GET ada karena validator listing OKX memprobe endpoint dengan GET; gate yang
+hanya menutup POST membuat GET jatuh ke 404 dan listing ASP ditolak. Lihat
+`apps/server/src/x402/prices.ts`.
+
+### `CACHET_SMOKE_CERT_ID`
+
+Menentukan sertifikat yang dibaca di akhir smoke test. Disetel di
+`/opt/cachet/deploy.env` (sekali per host); environment shell menimpanya untuk
+sekali jalan.
+
+| Nilai | Kapan dipakai |
+|---|---|
+| id angka (default `6`) | Registry deployment ini sudah punya sertifikat tersebut |
+| `none` | Registry masih kosong — **mainnet yang baru berdiri** |
+
+Pada mainnet yang belum menerbitkan sertifikat apa pun, id berapa pun membuat
+`certData` revert dan gateway menjawab 400, sehingga smoke gagal walau seluruh
+gateway sehat. `none` melewatinya secara eksplisit — ia tidak pernah menelan
+kegagalan dari id yang benar-benar disetel. Ganti ke id nyata begitu sertifikat
+pertama terbit.
 
 Pastikan hanya gateway yang listen di loopback; engine tidak memiliki host
 listener sama sekali:
@@ -350,7 +372,9 @@ Ganti `UTC_TIMESTAMP` dengan direktori backup nyata yang dipilih setelah menjala
 - `https://simpleartch.com/api/health` tetap sehat.
 - `https://api.cachetprotocol.xyz/healthz` mengembalikan HTTP 200.
 - Unpaid `POST /v1/verify` mengembalikan HTTP 402.
-- `GET /v1/cert/6` berhasil dari internet.
+- Unpaid **`GET`** pada keempat path berbayar mengembalikan HTTP 402, bukan 404.
+- `GET /v1/cert/:id` berhasil dari internet — atau `CACHET_SMOKE_CERT_ID=none` bila
+  registry deployment ini memang masih kosong.
 - Engine corpus `entries >= 5000` setelah recreate container.
 - Tidak ada listener publik pada 8100/8787.
 - `X402_BYPASS=0`, `DEMO_MODE=0`, `CHAIN_MODE=viem` tervalidasi tanpa print secret.
