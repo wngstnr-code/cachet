@@ -7,7 +7,7 @@
 import type { FastifyInstance } from "fastify";
 import { computeCommitHash, commitHelp } from "./commit.js";
 import type { Deps } from "./config.js";
-import { errBadRequest, errNearDup } from "./errors.js";
+import { errBadRequest, errNearDup, errPostOnly } from "./errors.js";
 import type { EngineQuery } from "./engine/client.js";
 import { FIXTURE_NEAR_DUP, FIXTURE_ORIGINAL } from "./fixtures.js";
 import { parseBaseUnit, toDisplay } from "./money.js";
@@ -43,34 +43,70 @@ async function idempotent(
   return out;
 }
 
+/** Inti verify — dipakai jalur POST (body) DAN GET (query string) supaya keduanya
+ *  tidak bisa menyimpang satu sama lain. */
+async function runVerify(deps: Deps, input: Record<string, unknown>): Promise<unknown> {
+  const { engine, chain, signer } = deps;
+
+  let eng: EngineQuery;
+  if (deps.demoMode) {
+    eng = input.demo === "near_dup" ? FIXTURE_NEAR_DUP : FIXTURE_ORIGINAL;
+  } else {
+    eng = await engine.query(await getImageBytes(input));
+  }
+
+  const signed = await signer.sign(eng.asset_sha256 as Hex, eng.verdict, eng.phashes as Hex[], now());
+
+  let premium;
+  if (typeof input.declared_value === "string") {
+    const dv = parseBaseUnit(input.declared_value);
+    premium = {
+      declaredValue: dv,
+      premium: await chain.quotePremium(dv),
+      fraudBond: await chain.fraudBondAmount(),
+    };
+  }
+  return buildProfile({ requestId: String(input.request_id ?? ""), engine: eng, signed, premium });
+}
+
+/** Endpoint berbayar yang menulis (mint/commit/watch) hanya boleh lewat POST.
+ *
+ *  Route GET-nya tetap didaftarkan — TANPA ini Fastify menjawab 404 dan gate x402
+ *  tidak pernah memberi tantangan yang bisa dibaca manusia sesudah pembayaran.
+ *  Yang belum bayar tetap dihentikan di 402 sebelum handler ini jalan.
+ *
+ *  Sengaja TIDAK dibuat berfungsi lewat GET: ketiganya mengubah state (menulis ke
+ *  chain), sedangkan GET harus aman diulang — cache, prefetch, atau crawler bisa
+ *  memicunya kembali. */
+function registerPostOnly(app: FastifyInstance, path: string, params: string): void {
+  app.get(path, async (_req, reply) => {
+    reply.header("allow", "POST");
+    throw errPostOnly(`${path} mengubah state, jadi hanya menerima POST. Kirim POST dengan ${params}.`);
+  });
+}
+
 export function registerRoutes(app: FastifyInstance, deps: Deps): void {
   const { engine, chain, signer } = deps;
 
   app.get("/healthz", async () => ({ status: "ok", signer: signer.address }));
 
   // ── verify ─────────────────────────────────────────────────────────────────
-  app.post("/v1/verify", async (req) => {
-    const body = (req.body ?? {}) as Record<string, unknown>;
+  app.post("/v1/verify", async (req) => runVerify(deps, (req.body ?? {}) as Record<string, unknown>));
 
-    let eng: EngineQuery;
-    if (deps.demoMode) {
-      eng = body.demo === "near_dup" ? FIXTURE_NEAR_DUP : FIXTURE_ORIGINAL;
-    } else {
-      eng = await engine.query(await getImageBytes(body));
+  // Varian GET: read-only, jadi aman dilayani lewat query string. Ini juga jalur
+  // yang diprobe validator listing OKX — lihat catatan di x402/prices.ts.
+  app.get("/v1/verify", async (req, reply) => {
+    // Hasil berbayar tidak boleh mendarat di cache bersama: tanpa ini CDN bisa
+    // menyajikan ulang profil yang sama ke pemanggil lain yang belum membayar.
+    reply.header("cache-control", "no-store");
+    const query = (req.query ?? {}) as Record<string, unknown>;
+    if (!deps.demoMode && typeof query.image_url !== "string") {
+      throw errBadRequest(
+        "GET /v1/verify wajib query image_url (opsional: declared_value, request_id). " +
+          "Untuk mengunggah bytes gambar (image_b64), gunakan POST.",
+      );
     }
-
-    const signed = await signer.sign(eng.asset_sha256 as Hex, eng.verdict, eng.phashes as Hex[], now());
-
-    let premium;
-    if (typeof body.declared_value === "string") {
-      const dv = parseBaseUnit(body.declared_value);
-      premium = {
-        declaredValue: dv,
-        premium: await chain.quotePremium(dv),
-        fraudBond: await chain.fraudBondAmount(),
-      };
-    }
-    return buildProfile({ requestId: String(body.request_id ?? ""), engine: eng, signed, premium });
+    return runVerify(deps, query);
   });
 
   // ── commit ───────────────────────────────────────────────────────────────
@@ -269,4 +305,11 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
       return { subscription_id: sub.id, cert_id: sub.cert_id, watching_from_entry: lastChecked };
     });
   });
+
+  // ── varian GET endpoint berbayar yang menulis ────────────────────────────
+  // Ada supaya keempat path terdaftar membalas 402 (bukan 404) untuk method apa
+  // pun; itu syarat lolos validator listing OKX.
+  registerPostOnly(app, "/v1/commit", "commit_hash, atau (phash0 + salt + creator)");
+  registerPostOnly(app, "/v1/mint", "image_b64 atau image_url, creator_address, declared_value");
+  registerPostOnly(app, "/v1/watch", "cert_id dan (webhook_url atau email)");
 }

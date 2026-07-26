@@ -25,13 +25,16 @@ class FakeFacilitator implements FacilitatorClient {
   verifyCount = 0;
   settleCount = 0;
 
-  constructor(private mode: "accept" | "reject" | "verify-error" = "accept") {}
+  constructor(
+    private mode: "accept" | "reject" | "verify-error" = "accept",
+    private network: "eip155:1952" | "eip155:196" = "eip155:1952",
+  ) {}
 
   async getSupported(): Promise<SupportedResponse> {
     return {
-      kinds: [{ x402Version: 2, scheme: "exact", network: "eip155:1952" }],
+      kinds: [{ x402Version: 2, scheme: "exact", network: this.network }],
       extensions: [],
-      signers: { "eip155:1952": [] },
+      signers: { [this.network]: [] },
     };
   }
 
@@ -75,6 +78,9 @@ async function getChallenge(app: Awaited<ReturnType<typeof makeApp>>["app"], url
   return { response, challenge: decodeRequired(header) };
 }
 
+/** Gambar sebagai data: URL — jalur image_url tanpa menyentuh jaringan. */
+const IMG_DATA_URL = `data:application/octet-stream;base64,${imgPayload.image_b64}`;
+
 describe("x402 v2 payment guard", () => {
   it("membangun empat route SDK dengan harga yang disepakati", () => {
     const routes = buildPaymentRoutes({
@@ -83,16 +89,19 @@ describe("x402 v2 payment guard", () => {
       resourceBase: "https://api.cachet.test",
     }) as Record<string, any>;
 
+    // Kunci TANPA verb — itu yang membuat gate berlaku untuk semua HTTP method.
+    // Menambahkan kembali "POST " di depan akan membuat GET jatuh ke 404 dan
+    // menggagalkan review listing ASP lagi; lihat catatan panjang di prices.ts.
     expect(PRICES).toEqual({
-      "POST /v1/verify": "$0.02",
-      "POST /v1/commit": "$0.01",
-      "POST /v1/mint": "$0.50",
-      "POST /v1/watch": "$0.10",
+      "/v1/verify": "$0.02",
+      "/v1/commit": "$0.01",
+      "/v1/mint": "$0.50",
+      "/v1/watch": "$0.10",
     });
     expect(Object.keys(routes)).toEqual(Object.keys(PRICES));
-    expect(routes["POST /v1/verify"].resource).toBe("https://api.cachet.test/v1/verify");
-    expect(routes["GET /v1/cert/:id"]).toBeUndefined();
-    expect(routes["POST /v1/challenge"]).toBeUndefined();
+    expect(routes["/v1/verify"].resource).toBe("https://api.cachet.test/v1/verify");
+    expect(routes["/v1/cert/:id"]).toBeUndefined();
+    expect(routes["/v1/challenge"]).toBeUndefined();
   });
 
   it("tanpa payment → 402 + PAYMENT-REQUIRED x402 v2", async () => {
@@ -184,6 +193,112 @@ describe("x402 v2 payment guard", () => {
     expect(facilitator.verifyCount).toBe(1);
     expect(facilitator.settleCount).toBe(0);
     expect(response.headers["payment-response"]).toBeUndefined();
+  });
+
+  // ── regresi listing ASP #7530 ─────────────────────────────────────────────
+  // Listing ditolak dua kali karena keempat path hanya menggate POST: validator
+  // resmi OKX memprobe dengan GET, kena 404 Fastify tanpa header PAYMENT-REQUIRED,
+  // lalu menyimpulkan "not a valid x402 service". Test di bawah ini yang menjaga
+  // supaya itu tidak bisa kambuh diam-diam.
+  it.each(["/v1/verify", "/v1/commit", "/v1/mint", "/v1/watch"])(
+    "GET %s tanpa payment → 402, bukan 404 (validator listing OKX memprobe pakai GET)",
+    async (url) => {
+      const facilitator = new FakeFacilitator();
+      const { app } = await makeApp({ x402: { bypass: false, facilitator } });
+
+      const response = await app.inject({ method: "GET", url });
+
+      expect(response.statusCode).toBe(402);
+      const challenge = decodeRequired(response.headers["payment-required"] as string);
+      expect(challenge.x402Version).toBe(2);
+      expect(challenge.accepts[0].scheme).toBe("exact");
+      expect(challenge.resource.url).toBe(`https://api.cachet.test${url}`);
+    },
+  );
+
+  it("query string tidak merusak pencocokan route berbayar", async () => {
+    const facilitator = new FakeFacilitator();
+    const { app } = await makeApp({ x402: { bypass: false, facilitator } });
+
+    const response = await app.inject({ method: "GET", url: "/v1/verify?image_url=https://x.test/a.png" });
+
+    expect(response.statusCode).toBe(402);
+    expect(response.headers["payment-required"]).toBeTruthy();
+  });
+
+  it("sudah bayar + GET /v1/verify?image_url → 200, sama seperti POST", async () => {
+    const facilitator = new FakeFacilitator();
+    const { app, engine } = await makeApp({ verdict: "ORIGINAL", x402: { bypass: false, facilitator } });
+    const { challenge } = await getChallenge(app);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/v1/verify?image_url=${encodeURIComponent(IMG_DATA_URL)}`,
+      headers: { "payment-signature": signedHeader(challenge) },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().verdict).toBe("ORIGINAL");
+    expect(engine.queryCount).toBe(1);
+    expect(facilitator.settleCount).toBe(1);
+    // Hasil berbayar tidak boleh disajikan ulang dari cache bersama ke pemanggil
+    // lain yang belum membayar.
+    expect(response.headers["cache-control"]).toBe("no-store");
+  });
+
+  it("sudah bayar + GET /v1/verify tanpa image_url → 400 dan TIDAK di-settle", async () => {
+    const facilitator = new FakeFacilitator();
+    const { app } = await makeApp({ x402: { bypass: false, facilitator } });
+    const { challenge } = await getChallenge(app);
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/verify",
+      headers: { "payment-signature": signedHeader(challenge) },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(facilitator.verifyCount).toBe(1);
+    expect(facilitator.settleCount).toBe(0);
+  });
+
+  it.each(["/v1/commit", "/v1/mint", "/v1/watch"])(
+    "sudah bayar + GET %s → 405 dan TIDAK di-settle (endpoint tulis, GET harus aman diulang)",
+    async (url) => {
+      const facilitator = new FakeFacilitator();
+      const { app, engine } = await makeApp({ x402: { bypass: false, facilitator } });
+      const { challenge } = await getChallenge(app, url);
+
+      const response = await app.inject({
+        method: "GET",
+        url,
+        headers: { "payment-signature": signedHeader(challenge) },
+      });
+
+      expect(response.statusCode).toBe(405);
+      expect(response.headers.allow).toBe("POST");
+      expect(response.json().error.code).toBe("METHOD_NOT_ALLOWED");
+      // Tidak ada uang terpotong, dan pipeline-nya tidak pernah mulai berjalan.
+      expect(facilitator.settleCount).toBe(0);
+      expect(engine.queryCount).toBe(0);
+      expect(engine.indexed).toHaveLength(0);
+    },
+  );
+
+  it("tantangan mainnet menyebut aset USD₮0 X Layer, bukan aset testnet", async () => {
+    // Inilah yang dibaca reviewer OKX. Test lain memakai testnet, jadi tanpa test
+    // ini aset mainnet tidak pernah ditegaskan di mana pun.
+    const facilitator = new FakeFacilitator("accept", "eip155:196");
+    const { app } = await makeApp({
+      x402: { bypass: false, facilitator, network: "eip155:196" },
+    });
+
+    const { challenge } = await getChallenge(app);
+
+    const accept = challenge.accepts[0];
+    expect(accept.network).toBe("eip155:196");
+    expect(accept.asset.toLowerCase()).toBe("0x779ded0c9e1022225f8e0630b35a9b54be713736");
+    expect(accept.amount).toBe("20000");
   });
 
   it("endpoint gratis tetap melewati payment middleware", async () => {

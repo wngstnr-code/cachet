@@ -23,3 +23,11 @@ export const errNearDup = () =>
 export const errBadRequest = (msg: string) => new AppError("BAD_REQUEST", msg, 400);
 
 export const errNotFound = (msg: string) => new AppError("NOT_FOUND", msg, 404);
+
+/** 405 untuk endpoint berbayar yang hanya boleh POST.
+ *
+ *  Path-nya tetap ter-gate x402, jadi pemanggil TANPA pembayaran melihat 402 lebih
+ *  dulu — itu yang dibaca validator listing OKX. 405 ini hanya untuk pemanggil yang
+ *  SUDAH bayar tapi memakai method yang salah; SDK tidak melakukan settlement pada
+ *  respons ≥400 (`x402-fastify/dist/cjs/index.js:322`), jadi tidak ada uang terpotong. */
+export const errPostOnly = (msg: string) => new AppError("METHOD_NOT_ALLOWED", msg, 405);

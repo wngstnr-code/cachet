@@ -10,5 +10,11 @@
     ".": "./index.ts",
     "./abi/*": "./abi/*"
   },
-  "files": ["index.ts", "abi", "addresses.testnet.json", "README.md"]
+  "files": [
+    "index.ts",
+    "abi",
+    "addresses.testnet.json",
+    "addresses.mainnet.json",
+    "README.md"
+  ]
 }

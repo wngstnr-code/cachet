@@ -244,6 +244,19 @@ smoke_public() {
     --data '{}')"
   [[ "${status}" == "402" ]] || die "unpaid public verify returned ${status}, expected 402"
 
+  # Keempat path berbayar harus menantang SETIAP method, bukan hanya POST.
+  # Pemeriksaan di atas memakai POST, jadi ia tidak pernah menangkap penyebab
+  # penolakan listing ASP #7530: gate yang hanya menutup POST membuat GET jatuh ke
+  # 404 Fastify, dan validator OKX -- yang memprobe dengan GET -- menyimpulkan
+  # endpoint ini bukan layanan x402. Cek ini yang membuatnya tidak bisa kambuh.
+  local paid_path
+  for paid_path in /v1/verify /v1/commit /v1/mint /v1/watch; do
+    status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+      "${PUBLIC_URL}${paid_path}")"
+    [[ "${status}" == "402" ]] \
+      || die "unpaid GET ${paid_path} returned ${status}, expected 402 (OKX listing validator probes with GET)"
+  done
+
   # Cert #6 hanya ada di deployment testnet. Deployment mainnet yang baru berdiri
   # belum punya sertifikat sama sekali, jadi id-nya dibuat bisa disetel -- dan
   # dilewati kalau memang belum ada yang diterbitkan.

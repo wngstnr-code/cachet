@@ -42,6 +42,7 @@ menolak start jika credential tidak lengkap atau URL publik/Broker bukan HTTPS.
 | Method | Guna |
 |---|---|
 | `POST /v1/verify` | Originality Profile §3.2 (tertandatangani EIP-712). `declared_value` opsional → `premium_quote`. |
+| `GET /v1/verify` | Sama, lewat query `image_url` (+ `declared_value`, `request_id`). Read-only. `image_b64` tetap POST-saja. |
 | `POST /v1/commit` | submit commit-reveal (client kirim `commit_hash`, atau server hitung dari `phash0+salt+creator`). |
 | `POST /v1/mint` | `register_and_mint` atomik → cert_id, cert_page_url, profil. Tolak `NEAR_DUP` (409). Menyemai registry. |
 | `GET /v1/cert/:id` | CertData + status (ACTIVE/PENDING/EXPIRED/REVOKED/NOT_INSURABLE) + umur + challenges survived. |
@@ -50,6 +51,19 @@ menolak start jika credential tidak lengkap atau URL publik/Broker bukan HTTPS.
 
 Semua endpoint mutasi **idempotent** bila diberi `request_id` sama. Error seragam
 `{ error: { code, message } }` — `code` mencerminkan nama error kontrak.
+
+### Method di endpoint berbayar
+
+Keempat path berbayar (`/v1/verify`, `/v1/commit`, `/v1/mint`, `/v1/watch`) membalas
+**402 untuk method apa pun**, bukan hanya POST. Ini bukan kerapian — validator listing
+OKX memprobe endpoint dengan GET, dan gate yang hanya menutup POST membuat GET jatuh ke
+404 sehingga layanannya dinilai bukan x402 sama sekali. Lihat catatan di
+`src/x402/prices.ts`.
+
+Sesudah pembayaran, `commit`/`mint`/`watch` membalas **405 + `Allow: POST`** untuk GET:
+ketiganya menulis ke chain, dan GET harus aman diulang (cache/prefetch/crawler bisa
+memicunya kembali). SDK tidak melakukan settlement pada respons ≥400, jadi pemanggil
+yang salah method tidak kehilangan uang.
 
 ## Desain kunci
 
