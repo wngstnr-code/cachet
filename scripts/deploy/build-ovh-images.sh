@@ -47,10 +47,14 @@ install -m 0644 \
   "${REPO_ROOT}/apps/server/pnpm-lock.yaml" \
   "${REPO_ROOT}/apps/server/tsconfig.json" \
   "${CACHET_GATEWAY_CONTEXT}/apps/server/"
+# Kedua file addresses wajib ikut ke context: index.ts meng-import keduanya sejak
+# deployment mainnet, dan image runtime menjalankan tsx (tidak ada tahap compile
+# yang menangkap import yang hilang sebelum container start).
 install -m 0644 \
   "${REPO_ROOT}/packages/contracts-abi/package.json" \
   "${REPO_ROOT}/packages/contracts-abi/index.ts" \
   "${REPO_ROOT}/packages/contracts-abi/addresses.testnet.json" \
+  "${REPO_ROOT}/packages/contracts-abi/addresses.mainnet.json" \
   "${CACHET_GATEWAY_CONTEXT}/packages/contracts-abi/"
 cp -R "${REPO_ROOT}/apps/server/src" "${CACHET_GATEWAY_CONTEXT}/apps/server/src"
 cp -R "${REPO_ROOT}/packages/contracts-abi/abi" \

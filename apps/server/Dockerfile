@@ -15,8 +15,14 @@ RUN corepack enable && corepack prepare pnpm@10.18.3 --activate
 WORKDIR /repo
 
 # tsconfig base + paket ABI (dibaca saat build; read-only, milik B).
+# KEDUA file addresses wajib ikut: index.ts meng-import keduanya sejak deployment
+# mainnet. Menyalin testnet saja membuat image ter-build mulus lalu MATI saat start
+# ("Cannot find module ./addresses.mainnet.json") — image ini menjalankan tsx, jadi
+# tidak ada tahap compile yang menangkapnya lebih dulu.
 COPY tsconfig.base.json ./tsconfig.base.json
-COPY packages/contracts-abi/package.json packages/contracts-abi/index.ts packages/contracts-abi/addresses.testnet.json ./packages/contracts-abi/
+COPY packages/contracts-abi/package.json packages/contracts-abi/index.ts \
+  packages/contracts-abi/addresses.testnet.json packages/contracts-abi/addresses.mainnet.json \
+  ./packages/contracts-abi/
 COPY packages/contracts-abi/abi ./packages/contracts-abi/abi
 
 # Gateway: manifest + lockfile dulu (cache install), lalu source.
