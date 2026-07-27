@@ -128,7 +128,7 @@ creator/agent ──x402──► GATEWAY ──► ENGINE (perceptual hashing, 
 | Gateway | `apps/server/` | The only mint path. Verifies via the engine, charges via x402, submits transactions, signs Originality Profiles (EIP-712) |
 | MCP server | `apps/mcp-server/` | Same capabilities exposed as MCP tools, so AI agents can verify and certify programmatically |
 | Engine | `services/engine/` | Content brain: 4-hash perceptual ensemble (hard claim) + embedding tier (advisory). Catches resize, re-compression, grayscale copies |
-| Watch | `services/watch/` | Re-scans the registry for copies of watched works, sends webhook alerts with a draft challenge |
+| Watch | `services/watch/` | Re-scans the registry for copies of watched works, sends webhook alerts with a draft challenge. Live in production as an internal-only worker (no public port), re-scanning every 6 hours by default |
 | Cert page | `apps/web/` | Public proof page. Static Vite site that reads the chain directly, so nobody has to trust our servers |
 | Pre-seed | `scripts/` | Seeds the engine corpus so day-one verdicts mean something |
 
