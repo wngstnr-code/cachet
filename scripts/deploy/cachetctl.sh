@@ -136,24 +136,30 @@ preflight() {
     assert_matches "${credential_key}" '^.+$'
   done
 
-  local engine_image gateway_image engine_sha gateway_sha
+  local engine_image gateway_image watch_image engine_sha gateway_sha watch_sha
   engine_image="$(env_value "${DEPLOY_ENV}" ENGINE_IMAGE)"
   gateway_image="$(env_value "${DEPLOY_ENV}" GATEWAY_IMAGE)"
+  watch_image="$(env_value "${DEPLOY_ENV}" WATCH_IMAGE)"
   [[ "${engine_image}" =~ ^ghcr\.io/scientivan/cachet-engine:sha-([0-9a-f]{40})$ ]] \
     || die "ENGINE_IMAGE must use a full immutable Git SHA tag"
   engine_sha="${BASH_REMATCH[1]}"
   [[ "${gateway_image}" =~ ^ghcr\.io/scientivan/cachet-gateway:sha-([0-9a-f]{40})$ ]] \
     || die "GATEWAY_IMAGE must use a full immutable Git SHA tag"
   gateway_sha="${BASH_REMATCH[1]}"
-  [[ "${engine_sha}" == "${gateway_sha}" ]] || die "engine and gateway image SHAs differ"
+  [[ "${watch_image}" =~ ^ghcr\.io/scientivan/cachet-watch:sha-([0-9a-f]{40})$ ]] \
+    || die "WATCH_IMAGE must use a full immutable Git SHA tag"
+  watch_sha="${BASH_REMATCH[1]}"
+  [[ "${engine_sha}" == "${gateway_sha}" && "${gateway_sha}" == "${watch_sha}" ]] \
+    || die "engine, gateway, and watch image SHAs differ"
 
   local data_root
   data_root="$(env_value "${DEPLOY_ENV}" CACHET_DATA_ROOT)"
   [[ "${data_root}" == /var/lib/cachet ]] || die "CACHET_DATA_ROOT must be /var/lib/cachet"
-  [[ -d "${data_root}/engine" && -d "${data_root}/gateway" ]] \
+  [[ -d "${data_root}/engine" && -d "${data_root}/gateway" && -d "${data_root}/watch" ]] \
     || die "persistent directories are missing; follow the provisioning runbook"
   assert_data_dir "${data_root}/engine"
   assert_data_dir "${data_root}/gateway"
+  assert_data_dir "${data_root}/watch"
 
   compose config --quiet
 
@@ -190,11 +196,12 @@ backup_state() {
   require_command python3
   require_command install
 
-  local timestamp backup_dir engine_db gateway_json
+  local timestamp backup_dir engine_db gateway_json watch_json
   timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
   backup_dir="${BACKUP_ROOT}/${timestamp}"
   engine_db="/var/lib/cachet/engine/index/engine.db"
   gateway_json="/var/lib/cachet/gateway/gateway.json"
+  watch_json="/var/lib/cachet/watch/watch.json"
 
   install -d -m 0700 "${BACKUP_ROOT}" "${backup_dir}"
 
@@ -206,6 +213,9 @@ backup_state() {
 
   if [[ -f "${gateway_json}" ]]; then
     install -m 0600 "${gateway_json}" "${backup_dir}/gateway.json"
+  fi
+  if [[ -f "${watch_json}" ]]; then
+    install -m 0600 "${watch_json}" "${backup_dir}/watch.json"
   fi
   install -m 0600 "${DEPLOY_ENV}" "${backup_dir}/deploy.env"
   log "backup created at ${backup_dir}"
@@ -224,13 +234,28 @@ engine_ip() {
   printf '%s\n' "${ip}"
 }
 
+watch_ip() {
+  require_root
+  require_command docker
+
+  local container_id ip
+  container_id="$(compose ps --quiet watch)"
+  [[ -n "${container_id}" ]] || die "watch container is not running"
+  ip="$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${container_id}")"
+  [[ "${ip}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+    || die "could not resolve the watch bridge IPv4 address"
+  printf '%s\n' "${ip}"
+}
+
 smoke_internal() {
   require_command curl
-  local ip
+  local ip wip
   ip="$(engine_ip)"
+  wip="$(watch_ip)"
   curl --fail --silent --show-error "http://${ip}:8100/healthz" >/dev/null
   curl --fail --silent --show-error http://127.0.0.1:8787/healthz >/dev/null
-  log "internal engine and gateway smoke checks passed"
+  curl --fail --silent --show-error "http://${wip}:8795/healthz" >/dev/null
+  log "internal engine, gateway, and watch smoke checks passed"
 }
 
 smoke_public() {
@@ -303,7 +328,7 @@ deploy_stack() {
   backup_state
 
   log "pulling immutable images"
-  compose pull engine gateway
+  compose pull engine gateway watch
 
   log "updating engine"
   compose up --detach --no-deps engine
@@ -313,6 +338,10 @@ deploy_stack() {
   log "updating gateway"
   compose up --detach --no-deps gateway
   wait_healthy gateway
+
+  log "updating watch"
+  compose up --detach --no-deps watch
+  wait_healthy watch
 
   smoke_internal
   smoke_public
@@ -332,7 +361,7 @@ bootstrap_engine() {
 pause_stack() {
   preflight
   log "stopping Cachet so SimpleArt has the full deployment budget"
-  compose stop gateway engine
+  compose stop watch gateway engine
 }
 
 resume_stack() {
@@ -342,6 +371,8 @@ resume_stack() {
   verify_corpus
   compose up --detach --no-deps gateway
   wait_healthy gateway
+  compose up --detach --no-deps watch
+  wait_healthy watch
   smoke_internal
   smoke_public
   log "Cachet resumed"
@@ -397,6 +428,7 @@ Commands:
   corpus                    Require at least 5000 engine corpus entries
   status                    Show service and host resource status
   engine-ip                 Print the private engine bridge IP for an SSH tunnel
+  watch-ip                  Print the private watch bridge IP for an SSH tunnel
 EOF
 }
 
@@ -412,5 +444,6 @@ case "${1:-}" in
   corpus) preflight; verify_corpus ;;
   status) show_status ;;
   engine-ip) engine_ip ;;
+  watch-ip) watch_ip ;;
   *) usage; exit 2 ;;
 esac

@@ -98,9 +98,70 @@ services:
       - backend
       - egress
 
+  watch:
+    image: ${WATCH_IMAGE:?WATCH_IMAGE must be an immutable GHCR tag}
+    init: true
+    restart: unless-stopped
+    read_only: true
+    environment:
+      ENGINE_URL: http://engine:8100
+      WATCH_PORT: "8795"
+      WATCH_SUBSCRIPTIONS_FILE: /gwdata/gateway.json
+      WATCH_DATA_DIR: /data
+      CRON_SCHEDULE: "${CRON_SCHEDULE:-0 */6 * * *}"
+    volumes:
+      - type: bind
+        source: ${CACHET_DATA_ROOT:-/var/lib/cachet}/gateway
+        target: /gwdata
+        read_only: true
+      - type: bind
+        source: ${CACHET_DATA_ROOT:-/var/lib/cachet}/watch
+        target: /data
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    mem_limit: 200m
+    cpus: 0.15
+    pids_limit: 128
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Tidak ada bagian `ports`: /rescan tidak diautentikasi, jadi worker ini
+    # sengaja internal-only (sama seperti engine) -- bukan dipublikasikan ke
+    # loopback seperti gateway. Debug manual lewat SSH tunnel ke bridge IP,
+    # lihat `cachetctl engine-ip` (pola yang sama berlaku untuk watch).
+    depends_on:
+      engine:
+        condition: service_healthy
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8795/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 4
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    networks:
+      - backend
+      - egress
+
 networks:
-  # Engine receives traffic only from gateway on this isolated network.
+  # Engine receives traffic only from gateway on this isolated network. Watch
+  # joins too (read-only consumer of engine's compare API), but never gets a
+  # host port -- it is reached the same way engine is, via SSH tunnel to its
+  # bridge IP, never directly from the internet.
   backend:
     internal: true
   # Gateway needs outbound access to X Layer RPC and the x402 facilitator.
+  # Watch needs it too, to POST webhook alerts to subscriber-supplied URLs.
   egress: {}

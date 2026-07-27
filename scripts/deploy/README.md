@@ -1,8 +1,15 @@
 # Deploy Cachet on the shared SimpleArt OVHcloud VPS
 
-Runbook ini men-deploy **engine + gateway saja** ke VPS production yang sudah
-melayani `simpleartch.com` (2 vCore, 4 GB RAM, 40 GB NVMe). SimpleArt selalu
-menjadi workload prioritas.
+Runbook ini men-deploy **engine + gateway + watch** ke VPS production yang
+sudah melayani `simpleartch.com` (2 vCore, 4 GB RAM, 40 GB NVMe). SimpleArt
+selalu menjadi workload prioritas.
+
+> Fase 1–8 di bawah adalah runbook historis untuk deploy awal (engine +
+> gateway). Servis `watch` ditambahkan belakangan — lihat **Fase 9** untuk
+> langkah penambahannya. `cachetctl.sh` versi saat ini sudah memperlakukan
+> ketiga servis sebagai satu unit (`deploy`/`resume`/`pause` mengikutkan
+> `watch`), jadi setelah Fase 9 selesai sekali, deploy berikutnya otomatis
+> mencakup ketiganya tanpa langkah tambahan.
 
 Desain yang disetujui: [`2026-07-22-ovh-shared-vps-design.md`](./2026-07-22-ovh-shared-vps-design.md).
 
@@ -325,12 +332,54 @@ sudo ss -ltnp | awk '$4 ~ /:(8100|8787)$/ {print}'
 
 Expected: hanya `127.0.0.1:8787`; tidak ada baris port 8100.
 
+## Fase 9 — Tambah servis Watch (satu kali, setelah Fase 8)
+
+Watch (`services/watch/`) menyemai perlindungan "cegah pendaftar ganda"
+lewat scan berkala terhadap registry (default tiap 6 jam, atau trigger
+manual) — lihat `demo-video.md` §4.1 di root repo untuk konteks kenapa ini
+sebelumnya TIDAK jalan di production. Servis ini **internal-only**, sama
+seperti engine: tidak ada listener publik, dan tidak ada Caddy route baru
+di Fase 6 yang perlu ditambah.
+
+Provisioning folder data (sekali saja, sebelum deploy pertama yang
+mengikutkan watch):
+
+```bash
+sudo install -d -o root -g root -m 0750 /var/lib/cachet/watch
+sudo chown 10001:10001 /var/lib/cachet/watch
+```
+
+Set `WATCH_IMAGE` di `/opt/cachet/deploy.env` ke SHA **yang sama** dengan
+`ENGINE_IMAGE`/`GATEWAY_IMAGE` (`build-ovh-images.sh` sudah membangun dan
+mem-push ketiganya sekaligus dari commit yang sama). Opsional: sesuaikan
+`CRON_SCHEDULE` (default `0 */6 * * *`, format cron 5-field, bukan secret).
+
+```bash
+sudo /opt/cachet/cachetctl preflight   # akan gagal sebelum WATCH_IMAGE diisi
+sudo /opt/cachet/cachetctl deploy      # sudah mengikutkan watch otomatis
+sudo /opt/cachet/cachetctl status
+```
+
+Verifikasi tidak ada listener publik baru:
+
+```bash
+sudo ss -ltnp | awk '$4 ~ /:(8100|8787|8795)$/ {print}'
+```
+
+Expected: tetap hanya `127.0.0.1:8787`. Debug manual watch (mis. trigger
+`/rescan`) lewat SSH tunnel ke bridge IP, sama seperti engine:
+
+```bash
+sudo /opt/cachet/cachetctl watch-ip
+```
+
 ## Operasi rutin
 
 ### Deploy Cachet
 
-1. Build/push image dari commit bersih di Mac.
-2. Ubah dua tag di `/opt/cachet/deploy.env` ke SHA yang sama.
+1. Build/push image dari commit bersih di Mac (`build-ovh-images.sh` — tiga
+   image sekaligus: engine, gateway, watch).
+2. Ubah ketiga tag di `/opt/cachet/deploy.env` ke SHA yang sama.
 3. Jalankan:
 
 ```bash
@@ -376,7 +425,10 @@ Ganti `UTC_TIMESTAMP` dengan direktori backup nyata yang dipilih setelah menjala
 - `GET /v1/cert/:id` berhasil dari internet — atau `CACHET_SMOKE_CERT_ID=none` bila
   registry deployment ini memang masih kosong.
 - Engine corpus `entries >= 5000` setelah recreate container.
-- Tidak ada listener publik pada 8100/8787.
+- Tidak ada listener publik pada 8100/8787/8795 (watch internal-only, sama
+  seperti engine).
 - `X402_BYPASS=0`, `DEMO_MODE=0`, `CHAIN_MODE=viem` tervalidasi tanpa print secret.
 - `docker stats` menunjukkan Cachet berada di bawah resource ceiling.
 - Previous immutable image tags tersedia dan rollback sudah direhearsal.
+- `ENGINE_IMAGE`, `GATEWAY_IMAGE`, `WATCH_IMAGE` berasal dari commit Git yang
+  sama (SHA identik, ditegakkan `preflight`).
