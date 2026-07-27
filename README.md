@@ -17,7 +17,7 @@
 
 > **Two live deployments, and the difference matters.** Mainnet is the real one: real USD₮0, a vault you cannot refill from a faucet, and a coverage cap sized to what that vault actually holds — **2 USDT** during bootstrap on chain 196. Testnet runs the same contracts, but the pay token is `MockUSDT`, which anyone can mint for free.
 >
-> Every example below says which chain it is on. **Testnet examples demonstrate the mechanism; they are not evidence that money is at stake.** The one full challenge-to-payout cycle we can show is on testnet, because that cycle needs public windows measured in days — the mainnet contracts are younger than that.
+> Every example below says which chain it is on. **Testnet examples demonstrate the mechanism; they are not evidence that money is at stake.** The one full challenge-to-payout cycle we can show is on testnet, where the whole sequence — mint, sale, challenge, ruling, payout — has already been played out end to end.
 
 ---
 
@@ -55,7 +55,7 @@ You get `HTTP/2 402` and a `payment-required` header. Base64-decode it and the x
 
 ---
 
-### On mainnet: a certificate an agent bought and minted by itself
+### On mainnet: a certificate an agent paid for and minted
 
 Certificate **#3** on chain 196 was produced from a chat window. An AI agent discovered the tools, hit the `402`, and settled it from an agent-operated wallet — **0.02 USD₮0** for the originality check, **0.5 USD₮0** for the mint — then the gateway posted the transaction. A human approved each payment in the chat, which is the gate we want there; nobody opened a wallet UI or touched a contract.
 
@@ -64,7 +64,7 @@ Certificate **#3** on chain 196 was produced from a chat window. An AI agent dis
 | Certificate page | [/mainnet/cert/3](https://cachetprotocol.vercel.app/mainnet/cert/3) |
 | Mint transaction | [`0x0617…2323`](https://www.oklink.com/xlayer/tx/0x0617b7e7a63a038bfc4cecb800ffdae16354ab1799cc7822279743b4499d2323) |
 
-The page shows **waiting period**, not active coverage. That is the 72-hour delay working as designed: a certificate cannot be minted and claimed against in the same afternoon.
+Open that page and it will show whatever state the certificate is actually in — waiting period, active coverage, or revoked — read live from the contract at the moment you load it. A fresh certificate always starts in a waiting period: coverage begins only after an on-chain delay, so a work cannot be minted and claimed against in the same afternoon.
 
 Then a modified copy of the same image went back through `verify_originality`, and the registry returned **`NEAR_DUP`** against the entry that mint had just created. No second certificate was issued. That is the gate doing the one thing it promises.
 
