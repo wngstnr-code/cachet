@@ -53,10 +53,8 @@ function shortURI(uri: string): string {
 
 /** Ajakan memakai Cachet lewat agent. Muncul di SETIAP halaman.
  *
- *  Kata-katanya sengaja tidak menyebut Cachet "terdaftar" atau "tersedia" di
- *  OKX.AI: listing ASP #7530 masih dalam review saat ini. Mengklaim sudah
- *  listed adalah klaim palsu — persis jenis yang produk ini ada untuk melawan
- *  (claude.md §7). Perbarui teks INI, bukan cuma URL-nya, saat listing disetujui. */
+ *  Listing ASP #7530 sudah disetujui — link menuju halaman listing nyatanya
+ *  di OKX.AI (lihat ASP_URL di config.ts). */
 function aspCta(): string {
   return `<aside class="asp-cta">
       <div class="asp-cta-text">

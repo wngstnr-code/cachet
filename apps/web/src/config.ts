@@ -80,12 +80,8 @@ export const homePath = (chain: ChainKey): string => `/${chain}`;
 
 export const galleryPath = (chain: ChainKey): string => `/${chain}/certificates`;
 
-/** PLACEHOLDER — ganti dengan URL listing ASP Cachet di OKX.AI setelah agent
- *  #7530 disetujui. Sampai itu terjadi, teks CTA di UI TIDAK BOLEH berbunyi
- *  seolah Cachet sudah terdaftar di sana: statusnya masih "under review", dan
- *  mengklaim sudah listed adalah klaim palsu persis jenis yang produk ini ada
- *  untuk melawan. Lihat claude.md §7. */
-export const ASP_URL = "https://okx.ai";
+/** Listing ASP Cachet di OKX.AI, agent #7530 (disetujui). */
+export const ASP_URL = "https://www.okx.ai/agents/7530";
 
 export const explorerTx = (c: ChainConfig, hash: string): string => `${c.explorer}/tx/${hash}`;
 export const explorerAddress = (c: ChainConfig, addr: string): string =>
