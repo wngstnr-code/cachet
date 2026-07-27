@@ -237,11 +237,26 @@ engine_ip() {
 watch_ip() {
   require_root
   require_command docker
+  require_command python3
 
   local container_id ip
   container_id="$(compose ps --quiet watch)"
   [[ -n "${container_id}" ]] || die "watch container is not running"
-  ip="$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${container_id}")"
+  # watch, unlike engine, is on TWO networks (backend + egress). The naive
+  # `{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}` template
+  # engine_ip() uses concatenates every network's IP with no separator when
+  # there's more than one, which never matches the IPv4 regex below. Pick the
+  # backend network by name suffix instead of guessing the exact
+  # project-prefixed network name (hyphen vs underscore varies by Compose
+  # version).
+  ip="$(docker inspect "${container_id}" | python3 -c '
+import json, sys
+data = json.load(sys.stdin)[0]
+for name, cfg in data["NetworkSettings"]["Networks"].items():
+    if name.endswith("backend"):
+        print(cfg["IPAddress"])
+        break
+')"
   [[ "${ip}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] \
     || die "could not resolve the watch bridge IPv4 address"
   printf '%s\n' "${ip}"
