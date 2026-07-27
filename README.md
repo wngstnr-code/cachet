@@ -1,8 +1,20 @@
+<p align="center">
+  <img src="cachet-logo.png" alt="Cachet" width="120">
+</p>
+
 # Cachet · Collateralized First-Seen Certificates for Digital Work
 
 **A certificate that puts money behind its claim.** Creators register their work in the Cachet registry and mint a certificate backed by real collateral. If the work is later proven to be a copy, the payout goes to whoever **holds** the work now, not to the creator who lied.
 
 [![contracts CI](https://github.com/wngstnr-code/cachet/actions/workflows/contracts.yml/badge.svg)](https://github.com/wngstnr-code/cachet/actions/workflows/contracts.yml) · Live on **X Layer mainnet** (chain 196) and **X Layer Testnet** (chain 1952) · All contracts verified on Sourcify
+
+| | |
+|---|---|
+| 🤖 **Listed as an ASP** | [okx.ai/agents/7530](https://www.okx.ai/agents/7530) |
+| 🔌 **Live API** (x402, mainnet settlement) | `https://api.cachetprotocol.xyz` |
+| 🔎 **Certificate pages** (no backend) | [cachetprotocol.vercel.app](https://cachetprotocol.vercel.app) |
+| 🎬 **90-second demo** | <!-- TODO A: paste video URL --> |
+| 𝕏 **Launch post** | <!-- TODO A: paste X post URL (#OKXAI) --> |
 
 > **Two live deployments, and the difference matters.** Mainnet is the real one: real USD₮0, a vault you cannot refill from a faucet, and a coverage cap sized to what that vault actually holds — **2 USDT** during bootstrap. Testnet is where the walkthrough below lives: the same contracts, but the pay token is `MockUSDT`, which anyone can mint for free. Every worked example on this page is a **testnet** transaction, so read them as a demonstration of the mechanism, not as evidence of collateral.
 
@@ -10,9 +22,41 @@
 
 ## ⚡ Try it in 60 seconds
 
-Every claim below is a public transaction. You do not need to trust us, or this README.
+Every claim below is a public transaction, or a live endpoint you can hit right now. You do not need to trust us, or this README.
 
-> Everything in this section is on **X Layer Testnet**. The full Golden Path has been played out end to end there — including a real payout — which is what makes it worth showing. Mainnet contracts are listed further down; they are new, so they have no such history yet.
+**Make the API charge you** (this is the running mainnet gateway, no signup):
+
+```bash
+curl -i -X POST https://api.cachetprotocol.xyz/v1/verify \
+     -H 'content-type: application/json' -d '{}'
+```
+
+You get `HTTP/2 402` and a `payment-required` header. Base64-decode it and the x402 envelope is real, pointing at the mainnet deployment:
+
+```json
+{
+  "x402Version": 2,
+  "resource": { "url": "https://api.cachetprotocol.xyz/v1/verify",
+                "description": "Cachet verify_originality - Originality Profile" },
+  "accepts": [{
+    "scheme": "exact",
+    "network": "eip155:196",
+    "amount": "20000",
+    "asset": "0x779ded0c9e1022225f8e0630b35a9b54be713736",
+    "payTo": "0xa3C3f8eE84a301fc4BD63DD712344d627230514B",
+    "maxTimeoutSeconds": 300,
+    "extra": { "name": "USD₮0", "version": "1" }
+  }]
+}
+```
+
+`20000` is 0.02 USD₮0 at 6 decimals. An x402-capable agent signs, retries with `PAYMENT-SIGNATURE`, and gets an Originality Profile back. No human in the loop.
+
+---
+
+> The rest of this section is on **X Layer Testnet**. The full Golden Path has been played out end to end there — including a real payout — which is what makes it worth showing. Mainnet contracts are listed further down; they are new, so they have no such history yet.
+
+<!-- TODO: drop a screenshot of /cert/7 into docs/img/ and embed it here -->
 
 **Live certificate pages** (static site, reads the chain directly, no backend):
 
@@ -95,6 +139,33 @@ Paid endpoints (`/v1/verify`, `/v1/mint`) answer HTTP **402** with an [x402](htt
 
 The envelope's `network` is the CAIP-2 id of the chain the gateway is actually running on — `eip155:196` on mainnet, where settlement is in USD₮0 ([`0x779Ded…3736`](https://www.oklink.com/xlayer/address/0x779Ded0c9e1022225f8E0630b35a9b54bE713736)). The gateway **refuses to start** if that value disagrees with its own `CHAIN_ID`: advertising a chain you are not on would send a buyer's funds somewhere you cannot settle them, and that failure is silent.
 
+Cachet is listed as an ASP on **[okx.ai/agents/7530](https://www.okx.ai/agents/7530)**, so an agent can discover it and pay for it without any prior relationship with us.
+
+### The six MCP tools
+
+| Tool | Endpoint | Price |
+|---|---|---|
+| `verify_originality` | `POST /v1/verify` | 0.02 USDT |
+| `commit_work` | `POST /v1/commit` | 0.01 USDT |
+| `register_and_mint` | `POST /v1/mint` | 0.5 USDT + 2% premium on-chain |
+| `get_certificate` | `GET /v1/cert/:id` | free |
+| `challenge_certificate` | `POST /v1/challenge` | on-chain bond |
+| `watch_subscribe` | `POST /v1/watch` | 0.1 USDT / 30 days |
+
+The MCP server never holds funds. It forwards to the gateway and passes the `402` straight back to the calling client, which is what signs the payment. Point it at the live gateway:
+
+```json
+{
+  "mcpServers": {
+    "cachet": {
+      "command": "pnpm",
+      "args": ["--dir", "apps/mcp-server", "start"],
+      "env": { "GATEWAY_URL": "https://api.cachetprotocol.xyz" }
+    }
+  }
+}
+```
+
 ## Honest limitations
 
 We sell trust, so the fine print is the product:
@@ -106,6 +177,8 @@ We sell trust, so the fine print is the product:
 - **Testnet collateral is not collateral.** The testnet vault holds `MockUSDT`, which has a public faucet. Only the mainnet deployment is backed by a token that costs anything to acquire.
 
 ## Security invariants (each one has a test)
+
+`cd contracts && forge test` → **169 tests across 7 suites, 0 failed.** The five invariants below are the ones worth naming:
 
 | Invariant | Proven in |
 |---|---|
@@ -179,6 +252,10 @@ services/    engine (originality brain) · watch (copy alerts)
 scripts/     corpus pre-seed + demo fixtures
 packages/    contracts-abi: ABIs + deployed addresses (the on-chain/off-chain contract)
 ```
+
+## License
+
+MIT. See [`LICENSE`](LICENSE).
 
 ## Team
 
