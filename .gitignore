@@ -65,3 +65,5 @@ skills-lock.json
 # Tetap ada di disk lokal — TIDAK terekam git, jadi tidak bisa dipulihkan
 # lewat git kalau folder ini terhapus.
 docs/
+demo-video.md
+cachet_idea_v2.md

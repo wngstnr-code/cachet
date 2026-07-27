@@ -43,6 +43,15 @@ export interface ChainClient {
   challengeBondAmount(): Promise<bigint>;
   vaultAddress(): Address; // target approve penantang (RFC-001 P6)
   payTokenAddress(): Address;
+  challengeManagerAddress(): Address; // kontrak yang dipanggil penantang sendiri
+
+  /** Coba tarik fraudBond+premium dari wallet KREATOR (butuh allowance
+   *  kreator→gateway sudah cukup, dicek dulu sebelum transferFrom). null =
+   *  allowance/saldo kurang → pemanggil fallback ke funding gateway sendiri
+   *  (perilaku lama, tidak berubah). Gagal di titik mana pun (termasuk
+   *  transferFrom revert) juga null, bukan throw — mint tidak boleh gagal
+   *  gara-gara fitur opsional ini. */
+  pullCollateralFromCreator(creator: Address, amount: bigint): Promise<{ txHash: Hex } | null>;
 
   // Commit-reveal
   commit(commitHash: Hex): Promise<{ txHash: Hex; timestamp: number }>;

@@ -26,6 +26,7 @@ interface StubOptions {
   challengeBond?: bigint;
   vault?: Address;
   payToken?: Address;
+  challengeManager?: Address;
   nowFn?: () => number; // unix detik
 }
 
@@ -45,6 +46,7 @@ export class StubChainClient implements ChainClient {
   private challengeBond: bigint;
   private vault: Address;
   private payToken: Address;
+  private challengeManager: Address;
   private now: () => number;
 
   private commits = new Map<Hex, Commit>();
@@ -53,6 +55,12 @@ export class StubChainClient implements ChainClient {
   private entryCount = 0n;
   private certCount = 0n;
   private challengeCount = 0n;
+
+  // Simulasi saldo/allowance payToken kreator, hanya untuk pullCollateralFromCreator.
+  // Semantik SAMA seperti ERC-20 asli: allowance & balance keduanya dikurangi
+  // saat pull berhasil.
+  private creatorBalances = new Map<string, bigint>();
+  private creatorAllowances = new Map<string, bigint>();
 
   constructor(opts: StubOptions = {}) {
     this.fraudBond = opts.fraudBond ?? BigInt(P.fraudBondAmount);
@@ -63,6 +71,7 @@ export class StubChainClient implements ChainClient {
     this.challengeBond = opts.challengeBond ?? BigInt(P.challengeBond);
     this.vault = opts.vault ?? (addresses.contracts.vault as Address);
     this.payToken = opts.payToken ?? (addresses.payToken.address as Address);
+    this.challengeManager = opts.challengeManager ?? (addresses.contracts.challengeManager as Address);
     this.now = opts.nowFn ?? (() => Math.floor(Date.now() / 1000));
   }
 
@@ -87,11 +96,35 @@ export class StubChainClient implements ChainClient {
   payTokenAddress() {
     return this.payToken;
   }
+  challengeManagerAddress() {
+    return this.challengeManager;
+  }
 
   private fakeTx(): Hex {
     const b = new Uint8Array(32);
     crypto.getRandomValues(b);
     return toHex(b);
+  }
+
+  // ── Test-only: simulasi saldo/allowance payToken kreator ────────────────────
+
+  setCreatorBalance(creator: Address, amount: bigint): void {
+    this.creatorBalances.set(creator.toLowerCase(), amount);
+  }
+
+  setCreatorAllowance(creator: Address, amount: bigint): void {
+    this.creatorAllowances.set(creator.toLowerCase(), amount);
+  }
+
+  async pullCollateralFromCreator(creator: Address, amount: bigint): Promise<{ txHash: Hex } | null> {
+    const key = creator.toLowerCase();
+    const balance = this.creatorBalances.get(key) ?? 0n;
+    const allowance = this.creatorAllowances.get(key) ?? 0n;
+    if (balance < amount || allowance < amount) return null;
+
+    this.creatorBalances.set(key, balance - amount);
+    this.creatorAllowances.set(key, allowance - amount);
+    return { txHash: this.fakeTx() };
   }
 
   async commit(commitHash: Hex) {

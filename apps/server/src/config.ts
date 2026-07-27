@@ -156,6 +156,14 @@ function resolveAddresses(): ViemAddresses {
   };
 }
 
+/** Cermin apps/web/src/config.ts (`isTestnet: chainId === 1952`) — URL cert page
+ *  tanpa slug chain dibaca cert page sebagai testnet (LEGACY_CHAIN), jadi mint
+ *  di mainnet WAJIB kirim slug eksplisit atau pembeli membuka sertifikat orang
+ *  lain di chain yang salah. */
+function chainSlug(chainId: number): "mainnet" | "testnet" {
+  return chainId === 196 ? "mainnet" : "testnet";
+}
+
 export function loadConfig(): Config {
   let gatewayPk = process.env.GATEWAY_PK as Hex | undefined;
   if (!gatewayPk) {
@@ -168,13 +176,15 @@ export function loadConfig(): Config {
   const chainMode =
     (process.env.CHAIN_MODE as "stub" | "viem" | undefined) ??
     (addrCert && addrCert !== ZERO_ADDR ? "viem" : "stub");
+  const chainId = Number(process.env.CHAIN_ID ?? 1952);
+  const certPageBaseRaw = process.env.CERT_PAGE_BASE || "https://cachet.local/cert-page";
   return {
     port: Number(process.env.GATEWAY_PORT ?? 8787),
     engineUrl: process.env.ENGINE_URL ?? "http://localhost:8100",
-    chainId: Number(process.env.CHAIN_ID ?? 1952),
+    chainId,
     rpcUrl: process.env.RPC_URL ?? "https://testrpc.xlayer.tech",
     chainMode,
-    certPageBase: process.env.CERT_PAGE_BASE || "https://cachet.local/cert-page",
+    certPageBase: `${certPageBaseRaw.replace(/\/$/, "")}/${chainSlug(chainId)}`,
     demoMode: process.env.DEMO_MODE === "1",
     dataDir: process.env.GATEWAY_DATA_DIR ?? resolve(__dirname, "../data"),
     gatewayPk,

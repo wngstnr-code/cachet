@@ -23,6 +23,7 @@ git -C "${REPO_ROOT}" diff --cached --quiet || {
 
 ENGINE_IMAGE="${REGISTRY_NAMESPACE}/cachet-engine:sha-${GIT_COMMIT}"
 GATEWAY_IMAGE="${REGISTRY_NAMESPACE}/cachet-gateway:sha-${GIT_COMMIT}"
+WATCH_IMAGE="${REGISTRY_NAMESPACE}/cachet-watch:sha-${GIT_COMMIT}"
 
 # Root .dockerignore adalah zona shared yang tidak diubah oleh Person A. Buat
 # context gateway minimal agar `.env`, `.git`, data, dan folder lain tidak pernah
@@ -77,6 +78,15 @@ docker buildx build \
   --push \
   "${CACHET_GATEWAY_CONTEXT}"
 
+printf 'Building %s\n' "${WATCH_IMAGE}"
+docker buildx build \
+  --platform linux/amd64 \
+  --file "${REPO_ROOT}/services/watch/Dockerfile" \
+  --tag "${WATCH_IMAGE}" \
+  --push \
+  "${REPO_ROOT}/services/watch"
+
 printf '\nSet these exact values in /opt/cachet/deploy.env:\n'
 printf 'ENGINE_IMAGE=%s\n' "${ENGINE_IMAGE}"
 printf 'GATEWAY_IMAGE=%s\n' "${GATEWAY_IMAGE}"
+printf 'WATCH_IMAGE=%s\n' "${WATCH_IMAGE}"

@@ -70,7 +70,7 @@ export function makeTools(gw: GatewayClient): ToolSpec[] {
     {
       name: "register_and_mint",
       description:
-        "Terbitkan sertifikat First-Seen (ERC-721 ber-jaminan, transferable) untuk gambar. Tolak near-duplicate. Berbayar x402 (0.5 USDT + premi 2% on-chain).",
+        "Terbitkan sertifikat First-Seen (ERC-721 ber-jaminan, transferable) untuk gambar. Tolak near-duplicate. Berbayar x402 (0.5 USDT + premi 2% on-chain). Fraud bond + premi ditarik dari wallet creator_address bila sudah approve gateway (payToken.approve), kalau belum gateway yang menanggung sementara — respons menyebut collateral_source.",
       schema: {
         ...imageFields,
         creator_address: z.string().describe("Alamat penerima sertifikat"),

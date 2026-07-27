@@ -43,6 +43,13 @@ function atomicWrite(path: string, data: unknown): void {
 export class Store {
   private path: string;
   private db: Db;
+  // In-memory saja, TIDAK di-persist: hanya untuk menandai "request_id ini
+  // sedang dieksekusi di proses ini". Dua request paralel ber-request_id sama
+  // yang lolos idempotency check (belum tersimpan) tanpa ini akan sama-sama
+  // menjalankan fn() — mis. mint dua kali, bond+premi keluar dobel dari
+  // gateway (B3). Aman untuk deployment single-instance (lihat
+  // scripts/deploy/*.yml — tidak ada replicas).
+  private inFlight = new Map<string, Promise<unknown>>();
 
   constructor(dir: string) {
     this.path = join(dir, "gateway.json");
@@ -92,6 +99,18 @@ export class Store {
 
   getIdempotent(key: string): unknown | undefined {
     return this.db.idempotency[key];
+  }
+
+  getInFlight(key: string): Promise<unknown> | undefined {
+    return this.inFlight.get(key);
+  }
+
+  setInFlight(key: string, p: Promise<unknown>): void {
+    this.inFlight.set(key, p);
+  }
+
+  clearInFlight(key: string): void {
+    this.inFlight.delete(key);
   }
 
   putIdempotent(key: string, response: unknown): void {

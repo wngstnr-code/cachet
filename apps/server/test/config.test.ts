@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { loadX402Options } from "../src/config.js";
+import { loadConfig, loadX402Options } from "../src/config.js";
 
 const PAY_TO = "0x1111111111111111111111111111111111111111" as const;
 const completeEnv: NodeJS.ProcessEnv = {
@@ -85,5 +85,45 @@ describe("x402 runtime config", () => {
     expect(() =>
       loadX402Options({ ...completeEnv, OKX_BASE_URL: "https://example.com" }, { chainId: 1952, payTo: PAY_TO }),
     ).toThrow(/wajib https:\/\/web3\.okx\.com/);
+  });
+});
+
+describe("loadConfig — cert_page_url bawa slug chain (B1)", () => {
+  const keys = ["CHAIN_ID", "CERT_PAGE_BASE"] as const;
+  const saved: Record<string, string | undefined> = {};
+
+  afterEach(() => {
+    for (const k of keys) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+
+  function withEnv(overrides: Partial<Record<(typeof keys)[number], string>>) {
+    for (const k of keys) saved[k] = process.env[k];
+    for (const k of keys) {
+      if (overrides[k] === undefined) delete process.env[k];
+      else process.env[k] = overrides[k];
+    }
+  }
+
+  it("CHAIN_ID=196 → certPageBase berakhiran /mainnet", () => {
+    withEnv({ CHAIN_ID: "196", CERT_PAGE_BASE: "https://cachetprotocol.vercel.app" });
+    expect(loadConfig().certPageBase).toBe("https://cachetprotocol.vercel.app/mainnet");
+  });
+
+  it("CHAIN_ID=1952 → certPageBase berakhiran /testnet", () => {
+    withEnv({ CHAIN_ID: "1952", CERT_PAGE_BASE: "https://cachetprotocol.vercel.app" });
+    expect(loadConfig().certPageBase).toBe("https://cachetprotocol.vercel.app/testnet");
+  });
+
+  it("CHAIN_ID tak diset (default 1952) → /testnet", () => {
+    withEnv({ CERT_PAGE_BASE: "https://cachetprotocol.vercel.app" });
+    expect(loadConfig().certPageBase).toBe("https://cachetprotocol.vercel.app/testnet");
+  });
+
+  it("CERT_PAGE_BASE dengan trailing slash tetap benar", () => {
+    withEnv({ CHAIN_ID: "196", CERT_PAGE_BASE: "https://cachetprotocol.vercel.app/" });
+    expect(loadConfig().certPageBase).toBe("https://cachetprotocol.vercel.app/mainnet");
   });
 });

@@ -7,40 +7,58 @@
 import type { FastifyInstance } from "fastify";
 import { computeCommitHash, commitHelp } from "./commit.js";
 import type { Deps } from "./config.js";
-import { errBadRequest, errNearDup, errPostOnly } from "./errors.js";
+import { errAlreadyRevoked, errBadRequest, errNearDup, errPostOnly } from "./errors.js";
 import type { EngineQuery } from "./engine/client.js";
 import { FIXTURE_NEAR_DUP, FIXTURE_ORIGINAL } from "./fixtures.js";
 import { parseBaseUnit, toDisplay } from "./money.js";
 import { buildProfile } from "./profile.js";
 import { ZERO_BYTES32 } from "./chain/types.js";
+import { fetchImageUrl } from "./url-guard.js";
 import type { Address, Hex } from "viem";
 
 const now = () => Math.floor(Date.now() / 1000);
 
-async function getImageBytes(body: Record<string, unknown>): Promise<Uint8Array> {
+async function getImageBytes(body: Record<string, unknown>, maxBytes: number): Promise<Uint8Array> {
   if (typeof body.image_b64 === "string") {
     return new Uint8Array(Buffer.from(body.image_b64, "base64"));
   }
   if (typeof body.image_url === "string") {
-    const res = await fetch(body.image_url);
-    if (!res.ok) throw errBadRequest(`gagal fetch image_url: ${res.status}`);
-    return new Uint8Array(await res.arrayBuffer());
+    // Validasi host (https + bukan target privat) SEBELUM dial apa pun (B4) +
+    // batas ukuran unduhan — lihat url-guard.ts.
+    return fetchImageUrl(body.image_url, maxBytes);
   }
   throw errBadRequest("wajib salah satu: image_b64 atau image_url");
 }
 
-/** Jalankan fn, tapi kembalikan respons tersimpan bila request_id sudah pernah. */
+/** Jalankan fn, tapi kembalikan respons tersimpan bila request_id sudah pernah.
+ *
+ *  Dua request paralel ber-request_id sama TIDAK boleh sama-sama menjalankan
+ *  fn() (B3) — mint dua kali berarti bond+premi keluar dobel dari gateway.
+ *  Kuncinya: getInFlight → fn() → setInFlight adalah SATU blok sinkron tanpa
+ *  `await` di antaranya. JS run-to-completion menjamin request kembar yang
+ *  masuk di antara dua baris manapun di blok ini mustahil — ia hanya bisa
+ *  masuk SETELAH `return promise`, saat in-flight sudah terdaftar. */
 async function idempotent(
   deps: Deps,
   requestId: unknown,
   fn: () => Promise<unknown>,
 ): Promise<unknown> {
   if (typeof requestId !== "string" || !requestId) return fn();
+
   const cached = deps.store.getIdempotent(requestId);
   if (cached !== undefined) return cached;
-  const out = await fn();
-  deps.store.putIdempotent(requestId, out);
-  return out;
+
+  const running = deps.store.getInFlight(requestId);
+  if (running) return running;
+
+  const promise = fn()
+    .then((out) => {
+      deps.store.putIdempotent(requestId, out);
+      return out;
+    })
+    .finally(() => deps.store.clearInFlight(requestId));
+  deps.store.setInFlight(requestId, promise);
+  return promise;
 }
 
 /** Inti verify — dipakai jalur POST (body) DAN GET (query string) supaya keduanya
@@ -52,7 +70,7 @@ async function runVerify(deps: Deps, input: Record<string, unknown>): Promise<un
   if (deps.demoMode) {
     eng = input.demo === "near_dup" ? FIXTURE_NEAR_DUP : FIXTURE_ORIGINAL;
   } else {
-    eng = await engine.query(await getImageBytes(input));
+    eng = await engine.query(await getImageBytes(input, deps.uploadLimitBytes));
   }
 
   const signed = await signer.sign(eng.asset_sha256 as Hex, eng.verdict, eng.phashes as Hex[], now());
@@ -139,13 +157,19 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
       const creator = body.creator_address as Address;
       const declaredValue = parseBaseUnit(body.declared_value);
 
-      const raw = await getImageBytes(body);
+      const raw = await getImageBytes(body, deps.uploadLimitBytes);
       const eng = await engine.query(raw);
       if (eng.verdict === "NEAR_DUP") throw errNearDup();
 
       const fraudBond = await chain.fraudBondAmount();
       const premium = await chain.quotePremium(declaredValue);
       const phashes = eng.phashes as [Hex, Hex, Hex, Hex];
+
+      // Kolateral idealnya dari wallet kreator sendiri (skin-in-the-game),
+      // bukan gateway — coba tarik dulu bila kreator sudah approve gateway.
+      // null (belum approve / saldo kurang) → gateway funding sendiri seperti
+      // biasa, TIDAK PERNAH menggagalkan mint karena fitur opsional ini.
+      const collateral = await chain.pullCollateralFromCreator(creator, fraudBond + premium);
 
       const revealedCommit =
         typeof body.salt === "string"
@@ -186,6 +210,10 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
         entry_id: entryId.toString(),
         tx_hash: txHash,
         cert_page_url: `${deps.certPageBase}/cert/${certId}`,
+        // Transparansi (bukan bagian skema §3.2 Originality Profile, yang
+        // beku): siapa yang benar-benar membayar fraud bond + premium.
+        collateral_source: collateral ? "creator" : "gateway",
+        ...(collateral ? { collateral_tx_hash: collateral.txHash } : {}),
         profile,
       };
     });
@@ -231,6 +259,11 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
   });
 
   // ── challenge_certificate ──────────────────────────────────────────────────
+  // Endpoint ini gratis & tanpa auth, jadi TIDAK PERNAH mengirim tx atas nama
+  // gateway (dulu begitu — bond ditarik dari wallet Cachet, bukan penantang;
+  // siapa pun bisa memanggilnya berulang untuk membakar saldo Cachet). Ia
+  // sekarang murni memberi instruksi; `ChallengeManager.challenge()` sendiri
+  // permissionless, jadi penantang mengirim tx-nya sendiri dari wallet sendiri.
   app.post("/v1/challenge", async (req) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
     return idempotent(deps, body.request_id, async () => {
@@ -241,23 +274,30 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
         throw errBadRequest("evidence_uri wajib (bukti admissible)");
       }
       const certId = BigInt(body.cert_id as string);
-      const { challengeId, txHash } = await chain.challenge(certId, body.evidence_uri);
+
+      // Baca-saja: memastikan cert ada & belum dicabut sebelum menyuruh
+      // penantang membayar bond untuk sesuatu yang pasti revert di kontrak.
+      const data = await chain.certData(certId);
+      if (data.revoked) throw errAlreadyRevoked(certId.toString());
 
       const vault = chain.vaultAddress();
+      const challengeManager = chain.challengeManagerAddress();
       const bond = await chain.challengeBondAmount();
       return {
-        challenge_id: challengeId.toString(),
-        tx_hash: txHash,
+        cert_id: certId.toString(),
         // Instruksi EKSPLISIT (RFC-001 P6): approve ke VAULT, bukan ChallengeManager.
         instructions: {
           approve_target: vault,
           pay_token: chain.payTokenAddress(),
+          challenge_manager: challengeManager,
           bond: { base: bond.toString(), display: toDisplay(bond) },
           steps: [
             `payToken.approve(${vault}, ${bond.toString()})`,
-            `ChallengeManager.challenge(${certId.toString()}, evidenceURI)`,
+            `ChallengeManager(${challengeManager}).challenge(${certId.toString()}, evidenceURI)`,
           ],
-          warning: "Approve ke alamat VAULT, BUKAN ChallengeManager — approve ke ChallengeManager akan revert.",
+          warning:
+            "Approve ke alamat VAULT, BUKAN ChallengeManager — approve ke ChallengeManager akan revert. " +
+            "Kirim tx challenge() dari wallet-mu sendiri: gateway tidak menggugat atas namamu.",
         },
       };
     });
@@ -284,7 +324,7 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
         entryId = mint.entry_id;
         phashes = mint.phashes;
       } else if (body.image_b64 || body.image_url) {
-        phashes = (await engine.hash(await getImageBytes(body))).phashes;
+        phashes = (await engine.hash(await getImageBytes(body, deps.uploadLimitBytes))).phashes;
       } else {
         throw errBadRequest(
           "cert belum tercatat di gateway ini — sertakan image_b64/image_url aset yang diawasi",

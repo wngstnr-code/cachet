@@ -24,6 +24,9 @@ export const errBadRequest = (msg: string) => new AppError("BAD_REQUEST", msg, 4
 
 export const errNotFound = (msg: string) => new AppError("NOT_FOUND", msg, 404);
 
+export const errAlreadyRevoked = (certId: string) =>
+  new AppError("CertificateAlreadyRevoked", `cert ${certId} sudah dicabut, tidak bisa digugat lagi`, 409);
+
 /** 405 untuk endpoint berbayar yang hanya boleh POST.
  *
  *  Path-nya tetap ter-gate x402, jadi pemanggil TANPA pembayaran melihat 402 lebih
