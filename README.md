@@ -13,9 +13,11 @@
 | 🤖 **Listed as an ASP** | [okx.ai/agents/7530](https://www.okx.ai/agents/7530) |
 | 🔌 **Live API** (x402, mainnet settlement) | `https://api.cachetprotocol.xyz` |
 | 🔎 **Certificate pages** (no backend) | [cachetprotocol.vercel.app](https://cachetprotocol.vercel.app) |
-| 𝕏 **Launch post + 90s demo** | <!-- TODO: paste X post URL (#OKXAI) --> |
+| 𝕏 **Launch post + 68s demo** | `REPLACE ME: X post URL (#OKXAI)` |
 
-> **Two live deployments, and the difference matters.** Mainnet is the real one: real USD₮0, a vault you cannot refill from a faucet, and a coverage cap sized to what that vault actually holds — **2 USDT** during bootstrap. Testnet is where the walkthrough below lives: the same contracts, but the pay token is `MockUSDT`, which anyone can mint for free. Every worked example on this page is a **testnet** transaction, so read them as a demonstration of the mechanism, not as evidence of collateral.
+> **Two live deployments, and the difference matters.** Mainnet is the real one: real USD₮0, a vault you cannot refill from a faucet, and a coverage cap sized to what that vault actually holds — **2 USDT** during bootstrap on chain 196. Testnet runs the same contracts, but the pay token is `MockUSDT`, which anyone can mint for free.
+>
+> Every example below says which chain it is on. **Testnet examples demonstrate the mechanism; they are not evidence that money is at stake.** The one full challenge-to-payout cycle we can show is on testnet, because that cycle needs public windows measured in days — the mainnet contracts are younger than that.
 
 ---
 
@@ -53,9 +55,22 @@ You get `HTTP/2 402` and a `payment-required` header. Base64-decode it and the x
 
 ---
 
-> The rest of this section is on **X Layer Testnet**. The full Golden Path has been played out end to end there — including a real payout — which is what makes it worth showing. Mainnet contracts are listed further down; they are new, so they have no such history yet.
+### On mainnet: a certificate an agent bought and minted by itself
 
-<!-- TODO: drop a screenshot of /cert/7 into docs/img/ and embed it here -->
+Certificate **#3** on chain 196 was produced from a chat window. An AI agent discovered the tools, hit the `402`, and settled it from an agent-operated wallet — **0.02 USD₮0** for the originality check, **0.5 USD₮0** for the mint — then the gateway posted the transaction. A human approved each payment in the chat, which is the gate we want there; nobody opened a wallet UI or touched a contract.
+
+| | |
+|---|---|
+| Certificate page | [/mainnet/cert/3](https://cachetprotocol.vercel.app/mainnet/cert/3) |
+| Mint transaction | [`0x0617…2323`](https://www.oklink.com/xlayer/tx/0x0617b7e7a63a038bfc4cecb800ffdae16354ab1799cc7822279743b4499d2323) |
+
+The page shows **waiting period**, not active coverage. That is the 72-hour delay working as designed: a certificate cannot be minted and claimed against in the same afternoon.
+
+Then a modified copy of the same image went back through `verify_originality`, and the registry returned **`NEAR_DUP`** against the entry that mint had just created. No second certificate was issued. That is the gate doing the one thing it promises.
+
+### On testnet: the full challenge-to-payout cycle
+
+The rest of this section is on **X Layer Testnet**, where the Golden Path has been played out end to end — including a real payout — because a challenge needs public windows measured in days.
 
 **Live certificate pages** (static site, reads the chain directly, no backend):
 
@@ -65,6 +80,8 @@ You get `HTTP/2 402` and a `payment-required` header. Base64-decode it and the x
 | [/cert/8](https://cachetprotocol.vercel.app/cert/8) | **REVOKED**: lost a challenge, the claim was paid to the current holder |
 | [/cert/9](https://cachetprotocol.vercel.app/cert/9) | Survived a challenge: the challenger's bond was slashed |
 | [/cert/999](https://cachetprotocol.vercel.app/cert/999) | Honest not-found state |
+
+The bare `/cert/:id` form is testnet; mainnet certificates live at `/mainnet/cert/:id`. The two are deliberately not aliased — certificate #3 on testnet and #3 on mainnet are different certificates, and quietly redirecting one to the other would make an old link show a work it never referred to. The testnet page says so itself, in a banner at the top.
 
 **One full Golden Path on-chain** (certificate #5):
 
@@ -97,11 +114,13 @@ CREATOR                                            BUYER
   │ 3. sell work + certificate ─────────────────────►│ guarantee moves too
   │                                                  │
 CHALLENGER                                           │
-  │ 4. "that is a copy!" + 10 USDT bond              │
+  │ 4. "that is a copy!" + challenge bond            │
   │    resolver rules after a public window          │
-  │    upheld  -> cert revoked, vault pays 50 USDT ─►│ to the BUYER
+  │    upheld  -> cert revoked, vault pays out ─────►│ to the BUYER
   │    dismissed -> challenger bond slashed          │
 ```
+
+Bond sizes and the coverage cap are on-chain parameters that differ per deployment and can be changed by the owner — the numbers are in the [parameter table](#contracts) below, tied to the chain they belong to. Quoting them loose from their chain is how an advertised guarantee quietly outgrows the vault that has to pay it.
 
 Step 4 is the point: the money lands with the buyer. That single property is what makes the certificate worth something on the secondary market.
 
