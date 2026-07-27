@@ -13,7 +13,7 @@
 | 🤖 **Listed as an ASP** | [okx.ai/agents/7530](https://www.okx.ai/agents/7530) |
 | 🔌 **Live API** (x402, mainnet settlement) | `https://api.cachetprotocol.xyz` |
 | 🔎 **Certificate pages** (no backend) | [cachetprotocol.vercel.app](https://cachetprotocol.vercel.app) |
-| 𝕏 **Launch post + 68s demo** | `REPLACE ME: X post URL (#OKXAI)` |
+| 𝕏 **Launch post + demo** | [@_halomsk](https://x.com/_halomsk/status/2081790095443796170) `#OKXAI` |
 
 > **Two live deployments, and the difference matters.** Mainnet is the real one: real USD₮0, a vault you cannot refill from a faucet, and a coverage cap sized to what that vault actually holds — **2 USDT** during bootstrap on chain 196. Testnet runs the same contracts, but the pay token is `MockUSDT`, which anyone can mint for free.
 >
