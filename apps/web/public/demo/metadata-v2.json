@@ -1,0 +1,5 @@
+{
+  "name": "Cachet Demo Artwork v2",
+  "description": "First-seen registration demo on Cachet. The chain, timestamp, and coverage state are on-chain; read the certificate, not this file.",
+  "image": "https://cachetprotocol.vercel.app/demo/artwork-v2.jpg"
+}

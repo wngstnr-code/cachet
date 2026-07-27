@@ -57,3 +57,4 @@ graphify-out/
 
 # Dokumen perencanaan internal — tidak untuk publik/juri (tetap ada di disk lokal)
 docs/
+.vercel
