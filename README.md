@@ -82,7 +82,7 @@ Digital work is trivial to copy, and "certificates of authenticity" are just wor
 ## How Cachet is different
 
 - **First-seen, not "original".** The registry records when a work was first seen by Cachet, with a timestamp anyone can verify on-chain. We never claim to know the whole internet.
-- **Collateralized.** Minting requires a fraud bond and a premium paid into a vault. A wrong certificate costs real money.
+- **Collateralized.** Minting locks a fraud bond and a premium in the vault. If the creator has approved the gateway to pull payToken from their own wallet, that collateral comes from them — real skin-in-the-game, slashable on fraud. If not, the gateway funds it during bootstrap so minting never breaks for callers who haven't approved yet. Either way, a wrong certificate costs real money out of the vault.
 - **The guarantee follows the holder.** The certificate is an NFT. Sell the work, transfer the NFT, and the coverage moves with it. At resolution the vault pays `ownerOf(certId)`, never a hardcoded creator.
 - **Permissionless challenge.** Anyone can dispute a certificate by posting a bond and evidence. A resolver rules after a public liveness window; a successful challenge revokes the certificate and pays the holder, a failed one forfeits the challenger's bond.
 
@@ -92,7 +92,9 @@ Digital work is trivial to copy, and "certificates of authenticity" are just wor
 CREATOR                                            BUYER
   │ 1. verify: engine checks the work                │
   │    against the registry -> ORIGINAL              │
-  │ 2. certify: pay premium + fraud bond             │
+  │ 2. certify: fraud bond + premium locked in vault │
+  │    (from creator's wallet if approved, else      │
+  │    gateway funds it during bootstrap)            │
   │    -> certificate NFT minted on-chain            │
   │ 3. sell work + certificate ─────────────────────►│ guarantee moves too
   │                                                  │
@@ -169,11 +171,12 @@ The MCP server never holds funds. It forwards to the gateway and passes the `402
 
 We sell trust, so the fine print is the product:
 
-- **The registry is our corpus, not the internet.** "First-seen" means first seen by Cachet.
+- **The registry is our corpus, not the internet.** "First-seen" means first seen by Cachet. The production pre-seed is ~5,000 entries, and most of those are synthetic bootstrap images, not real-world ones — a batch of 996 real Wikimedia Commons images has been prepared locally (`scripts/data/index/`, verified: 996/1000 requested, 4 skipped for corrupt/unsupported files) and is ready to merge into the live registry via the documented SSH-tunnel seeding path (`scripts/deploy/README.md` §"Fase 7"), additive and non-destructive to what's already live.
 - **Coverage is capped, and the cap is small.** It is an on-chain parameter (`maxDeclaredValue`) that differs per deployment and is further bounded by the vault balance — see the table below, but read the contract to be sure. A claim can only ever pay what the vault actually holds.
 - **Adjudication is centralized**, constrained by a public liveness window and published admissible-evidence rules ([`contracts/RESOLVER.md`](contracts/RESOLVER.md)). On mainnet the resolver is a 2-of-3 multisig, which removes the single-key failure mode but **not** the centralization: the operator still decides. Trustless adjudication it is not — the roadmap is a decentralized oracle set (3+ independent resolvers).
-- **The embedding tier is advisory.** Only the deterministic perceptual-hash ensemble backs hard claims; there is no "AI detector" here.
+- **The embedding tier is advisory — and on the live deployment, it isn't real CLIP yet.** Only the deterministic perceptual-hash ensemble backs hard claims; there is no "AI detector" here. Production also runs `ENGINE_EMBEDDER=fake` (a placeholder vector derived from image bytes, not a trained embedding model), because the shared VPS (2 vCore / 4 GB, shared with another production site) can't safely fit `torch`+`open_clip` inside the engine's 900 MB memory ceiling. Enabling real CLIP needs at least a 4 vCore / 8 GB host — see `scripts/deploy/2026-07-22-ovh-shared-vps-design.md` §6 for the exact upgrade trigger. Until then, `distinctiveness`/`GRAY_ZONE` reflect a placeholder signal, not a real similarity model.
 - **Testnet collateral is not collateral.** The testnet vault holds `MockUSDT`, which has a public faucet. Only the mainnet deployment is backed by a token that costs anything to acquire.
+- **The fraud bond only comes from the creator if they've approved it.** `POST /v1/mint` checks whether the creator has approved the gateway to pull `fraudBond + premium` from their own payToken balance; if so, that's where the collateral comes from (real skin-in-the-game — the response marks `collateral_source: "creator"`). If they haven't approved, the gateway funds it itself so minting still works (`collateral_source: "gateway"`) — but then the anti-fraud incentive the bond is meant to provide doesn't apply, since it isn't the creator's money at risk. Approving is one plain ERC-20 `approve(gatewayAddress, amount)` call, done once.
 
 ## Security invariants (each one has a test)
 
@@ -186,6 +189,18 @@ We sell trust, so the fine print is the product:
 | The vault never transfers more than its balance: partial payout + event, not a locking revert | [`contracts/test/CachetVault.t.sol`](contracts/test/CachetVault.t.sol) |
 | Waiting period and coverage window are enforced on-chain, assessed when a challenge is **opened** | [`contracts/test/ChallengeManager.t.sol`](contracts/test/ChallengeManager.t.sol) |
 | Challenger bonds are earmarked, never spendable as claim liquidity | [`contracts/test/CachetVault.t.sol`](contracts/test/CachetVault.t.sol) |
+
+## Gateway invariants (off-chain, each one has a test)
+
+The contracts enforce themselves no matter what the gateway does. These are properties of *our* server — regressions here wouldn't show up as a failed transaction, just a quiet bug:
+
+| Invariant | Proven in |
+|---|---|
+| `/v1/challenge` never submits a transaction on the caller's behalf — it returns instructions only, so the challenger's own wallet bears the bond and earns the bounty | [`apps/server/test/routes.test.ts`](apps/server/test/routes.test.ts) |
+| `cert_id`/`entry_id` are read from the mint transaction's on-chain event, never guessed from a pre-confirmation simulation | [`apps/server/test/viem-events.test.ts`](apps/server/test/viem-events.test.ts) |
+| Two mint requests with the same `request_id`, fired concurrently, never mint twice | [`apps/server/test/routes.test.ts`](apps/server/test/routes.test.ts) |
+| `image_url` is validated (public HTTPS host, no redirect) *before* any network request — a private or internal target is never dialed | [`apps/server/test/url-guard.test.ts`](apps/server/test/url-guard.test.ts) |
+| The certificate page URL returned by `/v1/mint` always names its chain (`/mainnet/cert/:id` or `/testnet/cert/:id`) — a bare link is never returned, so a buyer can't land on the wrong chain's certificate | [`apps/server/test/config.test.ts`](apps/server/test/config.test.ts) |
 
 ## Contracts
 

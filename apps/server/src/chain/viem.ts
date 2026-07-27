@@ -17,8 +17,10 @@ import {
   erc20Abi,
   http,
   maxUint256,
+  parseEventLogs,
   type Address,
   type Hex,
+  type Log,
   type PublicClient,
   type WalletClient,
 } from "viem";
@@ -65,6 +67,26 @@ function mapChainError(err: unknown): AppError {
   return new AppError(name ?? "CHAIN_REVERT", msg, 400);
 }
 
+/** Ekstrak certId/entryId dari event `CertificateMinted` di RECEIPT (bukan dari
+ *  hasil `simulateContract`, yang cuma snapshot state SEBELUM tx masuk — kalau
+ *  mint lain menyelip di antara simulasi dan konfirmasi, id hasil simulasi bisa
+ *  meleset dari id nyata yang ter-mint on-chain). Fungsi murni: bisa dites tanpa
+ *  chain sungguhan lewat log buatan tangan. */
+export function parseCertificateMinted(
+  logs: Log[],
+  certificateAddress: Address,
+): { entryId: bigint; certId: bigint } {
+  const events = parseEventLogs({ abi: CachetCertificateAbi, eventName: "CertificateMinted", logs });
+  const mine = events.find((e) => e.address.toLowerCase() === certificateAddress.toLowerCase());
+  if (!mine) {
+    throw new Error(
+      `event CertificateMinted tidak ditemukan di receipt dari ${certificateAddress} — tx sukses tapi mint dianggap gagal`,
+    );
+  }
+  const { certId, entryId } = mine.args as { certId: bigint; entryId: bigint };
+  return { entryId, certId };
+}
+
 export class ViemChainClient implements ChainClient {
   private account: PrivateKeyAccount;
   private pub: PublicClient;
@@ -100,6 +122,45 @@ export class ViemChainClient implements ChainClient {
     }
   }
 
+  /** Tarik fraudBond+premium dari wallet KREATOR bila mereka sudah approve
+   *  gateway (allowance) dan punya saldo cukup — dicek DULU sebelum kirim tx,
+   *  supaya tidak mencoba transferFrom yang pasti revert. null di titik mana
+   *  pun (allowance/saldo kurang, atau transferFrom sendiri gagal) → pemanggil
+   *  fallback ke funding gateway sendiri; fitur ini tidak boleh menggagalkan
+   *  mint. */
+  async pullCollateralFromCreator(creator: Address, amount: bigint): Promise<{ txHash: Hex } | null> {
+    try {
+      const [allowance, balance] = await Promise.all([
+        this.pub.readContract({
+          address: this.addr.mockUSDT,
+          abi: erc20Abi,
+          functionName: "allowance",
+          args: [creator, this.account.address],
+        }),
+        this.pub.readContract({
+          address: this.addr.mockUSDT,
+          abi: erc20Abi,
+          functionName: "balanceOf",
+          args: [creator],
+        }),
+      ]);
+      if (allowance < amount || balance < amount) return null;
+
+      const hash = await this.wallet.writeContract({
+        address: this.addr.mockUSDT,
+        abi: erc20Abi,
+        functionName: "transferFrom",
+        args: [creator, this.account.address, amount],
+        chain: this.wallet.chain,
+        account: this.account,
+      });
+      await this.pub.waitForTransactionReceipt({ hash });
+      return { txHash: hash };
+    } catch {
+      return null;
+    }
+  }
+
   // ── Parameter (baca dari chain) ────────────────────────────────────────────
 
   fraudBondAmount(): Promise<bigint> {
@@ -128,6 +189,9 @@ export class ViemChainClient implements ChainClient {
   }
   payTokenAddress(): Address {
     return this.addr.mockUSDT;
+  }
+  challengeManagerAddress(): Address {
+    return this.addr.challengeManager;
   }
 
   // ── Commit-reveal ───────────────────────────────────────────────────────────
@@ -164,7 +228,10 @@ export class ViemChainClient implements ChainClient {
 
   async registerAndMint(r: MintRequest): Promise<{ entryId: bigint; certId: bigint; txHash: Hex }> {
     try {
-      const { request, result } = await this.pub.simulateContract({
+      // simulateContract di sini hanya untuk validasi pra-tx (revert kontrak
+      // jadi AppError yang jelas) & membentuk `request` — HASILNYA (id) tidak
+      // dipakai, lihat parseCertificateMinted di atas.
+      const { request } = await this.pub.simulateContract({
         address: this.addr.certificate,
         abi: CachetCertificateAbi,
         functionName: "registerAndMint",
@@ -172,8 +239,8 @@ export class ViemChainClient implements ChainClient {
         account: this.account,
       });
       const hash = await this.wallet.writeContract(request);
-      await this.pub.waitForTransactionReceipt({ hash });
-      const [entryId, certId] = result as unknown as [bigint, bigint];
+      const receipt = await this.pub.waitForTransactionReceipt({ hash });
+      const { entryId, certId } = parseCertificateMinted(receipt.logs, this.addr.certificate);
       return { entryId, certId, txHash: hash };
     } catch (err) {
       throw mapChainError(err);

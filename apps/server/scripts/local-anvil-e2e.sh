@@ -58,5 +58,12 @@ echo "mint: cert_id=$CERTID onchain_certCount=$(cast call $CERT 'certCount()(uin
 echo "cert(before waiting): $(curl -s localhost:$PORT/v1/cert/$CERTID | $PY -c 'import sys,json;print(json.load(sys.stdin)["status"])')"
 sleep 12; cast send $MOCK "mint(address,uint256)" $GW_ADDR 1 --private-key $DEPLOYER_PK --rpc-url $RPC >/dev/null 2>&1
 echo "cert(after waiting): $(curl -s localhost:$PORT/v1/cert/$CERTID | $PY -c 'import sys,json;print(json.load(sys.stdin)["status"])')"
-echo "challenge: $(curl -s -X POST localhost:$PORT/v1/challenge -H 'content-type: application/json' -d "{\"cert_id\":\"$CERTID\",\"evidence_uri\":\"ipfs://ev\"}" | $PY -c 'import sys,json;print("challenge_id",json.load(sys.stdin)["challenge_id"])')"
+BAL_BEFORE=$(cast call $MOCK "balanceOf(address)(uint256)" $GW_ADDR --rpc-url $RPC)
+echo "challenge: $(curl -s -X POST localhost:$PORT/v1/challenge -H 'content-type: application/json' -d "{\"cert_id\":\"$CERTID\",\"evidence_uri\":\"ipfs://ev\"}" | $PY -c 'import sys,json;p=json.load(sys.stdin);print("challenge_manager",p["instructions"]["challenge_manager"],"bond",p["instructions"]["bond"]["display"])')"
+BAL_AFTER=$(cast call $MOCK "balanceOf(address)(uint256)" $GW_ADDR --rpc-url $RPC)
+if [ "$BAL_BEFORE" != "$BAL_AFTER" ]; then
+  echo "GAGAL — saldo gateway berubah setelah /v1/challenge ($BAL_BEFORE -> $BAL_AFTER); gateway tidak boleh mengirim tx sendiri."
+  exit 1
+fi
+echo "OK: saldo gateway TIDAK berubah setelah /v1/challenge ($BAL_BEFORE mUSDT) — endpoint tidak mengirim tx sendiri."
 echo "OK — ViemChainClient terverifikasi terhadap kontrak nyata."

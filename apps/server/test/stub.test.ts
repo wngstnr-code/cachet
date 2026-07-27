@@ -88,3 +88,43 @@ describe("StubChainClient — meniru aturan kontrak", () => {
     expect(await c.isCoverageActive(certId)).toBe(false);
   });
 });
+
+describe("StubChainClient — pullCollateralFromCreator (semantik ERC-20)", () => {
+  it("allowance & saldo cukup → tarik sukses, keduanya berkurang tepat amount", async () => {
+    const c = new StubChainClient();
+    c.setCreatorBalance(CREATOR, 10_000_000n);
+    c.setCreatorAllowance(CREATOR, 6_000_000n);
+
+    const out = await c.pullCollateralFromCreator(CREATOR, 6_000_000n);
+    expect(out?.txHash).toMatch(/^0x/);
+
+    // Allowance persis habis → pull lagi (sekecil apa pun) harus null.
+    expect(await c.pullCollateralFromCreator(CREATOR, 1n)).toBeNull();
+  });
+
+  it("tanpa allowance/saldo sama sekali → null (default 0)", async () => {
+    const c = new StubChainClient();
+    expect(await c.pullCollateralFromCreator(CREATOR, 1n)).toBeNull();
+  });
+
+  it("saldo cukup tapi allowance kurang → null", async () => {
+    const c = new StubChainClient();
+    c.setCreatorBalance(CREATOR, 10_000_000n);
+    c.setCreatorAllowance(CREATOR, 999_999n);
+    expect(await c.pullCollateralFromCreator(CREATOR, 1_000_000n)).toBeNull();
+  });
+
+  it("allowance cukup tapi saldo kurang → null", async () => {
+    const c = new StubChainClient();
+    c.setCreatorBalance(CREATOR, 999_999n);
+    c.setCreatorAllowance(CREATOR, 10_000_000n);
+    expect(await c.pullCollateralFromCreator(CREATOR, 1_000_000n)).toBeNull();
+  });
+
+  it("pas pas-an (allowance == saldo == amount) → tetap sukses", async () => {
+    const c = new StubChainClient();
+    c.setCreatorBalance(CREATOR, 1_000_000n);
+    c.setCreatorAllowance(CREATOR, 1_000_000n);
+    expect(await c.pullCollateralFromCreator(CREATOR, 1_000_000n)).not.toBeNull();
+  });
+});

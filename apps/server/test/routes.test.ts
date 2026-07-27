@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { StubChainClient } from "../src/chain/stub.js";
 import { engineResult, FakeEngineClient, imgPayload, makeApp } from "./helpers.js";
@@ -38,6 +38,42 @@ describe("POST /v1/verify", () => {
   });
 });
 
+describe("POST /v1/verify — SSRF via image_url (B4)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("image_url ke jaringan internal → 400, fetch TIDAK PERNAH dipanggil", async () => {
+    const { app } = await makeApp({ verdict: "ORIGINAL" });
+    const spy = vi.fn();
+    vi.stubGlobal("fetch", spy);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/verify",
+      payload: { image_url: "https://127.0.0.1:8100/healthz" },
+    });
+
+    expect(res.statusCode).toBe(400);
+    // Inti fix: guard menolak SEBELUM dial, bukan menyaring status sesudahnya —
+    // kalau fetch sempat dipanggil, oracle status-code masih terbuka.
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("image_url ke metadata cloud (169.254.169.254) → 400, tanpa dial", async () => {
+    const { app } = await makeApp({ verdict: "ORIGINAL" });
+    const spy = vi.fn();
+    vi.stubGlobal("fetch", spy);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/verify",
+      payload: { image_url: "https://169.254.169.254/latest/meta-data" },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
+
 describe("POST /v1/mint", () => {
   const mintBody = {
     ...imgPayload,
@@ -51,7 +87,7 @@ describe("POST /v1/mint", () => {
     expect(res.statusCode).toBe(200);
     const b = res.json();
     expect(b.cert_id).toBe("1");
-    expect(b.cert_page_url).toBe("https://cachet.test/cert/1");
+    expect(b.cert_page_url).toBe("https://cachet.test/testnet/cert/1");
     expect(b.profile.premium_quote.premium).toBe("1000000");
     expect(engine.indexed).toEqual([{ source: "cachet-mint", uri: "cert:1" }]);
   });
@@ -78,6 +114,68 @@ describe("POST /v1/mint", () => {
     const b = await app.inject({ method: "POST", url: "/v1/mint", payload: body });
     expect(a.json().cert_id).toBe("1");
     expect(b.json().cert_id).toBe("1"); // bukan 2
+  });
+
+  it("dua request PARALEL request_id sama → tetap hanya mint sekali (kunci in-flight, B3)", async () => {
+    const { app, chain } = await makeApp({ verdict: "ORIGINAL" });
+    const body = { ...mintBody, request_id: "req-concurrent" };
+    const [a, b] = await Promise.all([
+      app.inject({ method: "POST", url: "/v1/mint", payload: body }),
+      app.inject({ method: "POST", url: "/v1/mint", payload: body }),
+    ]);
+    expect(a.json().cert_id).toBe("1");
+    expect(b.json().cert_id).toBe("1"); // bukan 2 — tanpa kunci, race bisa mint dobel
+    // Bukti langsung di "chain": cert #2 tidak pernah ada.
+    await expect(chain.certData(2n)).rejects.toMatchObject({ code: "InvalidCertId" });
+  });
+});
+
+describe("POST /v1/mint — kolateral dari kreator", () => {
+  const CREATOR = "0x3333333333333333333333333333333333333333" as const;
+  const mintBody = { ...imgPayload, creator_address: CREATOR, declared_value: "50000000" };
+
+  it("kreator sudah approve + saldo cukup → collateral_source=creator, saldo berkurang tepat fraudBond+premium", async () => {
+    const { app, chain } = await makeApp({ verdict: "ORIGINAL" });
+    const fraudBond = await chain.fraudBondAmount();
+    const premium = await chain.quotePremium(50_000_000n);
+    const needed = fraudBond + premium;
+
+    chain.setCreatorBalance(CREATOR, needed + 1_000_000n); // ada sisa
+    chain.setCreatorAllowance(CREATOR, needed);
+
+    const res = await app.inject({ method: "POST", url: "/v1/mint", payload: mintBody });
+    expect(res.statusCode).toBe(200);
+    const b = res.json();
+    expect(b.collateral_source).toBe("creator");
+    expect(b.collateral_tx_hash).toMatch(/^0x/);
+
+    // Bukti langsung: allowance & saldo di stub genuinely berkurang.
+    const after = await chain.pullCollateralFromCreator(CREATOR, 1n);
+    expect(after).toBeNull(); // allowance sudah habis dipakai, sisa < 1n tak mungkin cukup
+  });
+
+  it("kreator belum approve sama sekali → fallback collateral_source=gateway (TIDAK breaking)", async () => {
+    const { app } = await makeApp({ verdict: "ORIGINAL" });
+    const res = await app.inject({ method: "POST", url: "/v1/mint", payload: mintBody });
+    expect(res.statusCode).toBe(200);
+    const b = res.json();
+    expect(b.collateral_source).toBe("gateway");
+    expect(b.collateral_tx_hash).toBeUndefined();
+    expect(b.cert_id).toBe("1"); // mint tetap sukses persis seperti sebelum fitur ini ada
+  });
+
+  it("allowance ADA tapi kurang dari kebutuhan → tetap fallback gateway, bukan error", async () => {
+    const { app, chain } = await makeApp({ verdict: "ORIGINAL" });
+    const fraudBond = await chain.fraudBondAmount();
+    const premium = await chain.quotePremium(50_000_000n);
+    const needed = fraudBond + premium;
+
+    chain.setCreatorBalance(CREATOR, needed);
+    chain.setCreatorAllowance(CREATOR, needed - 1n); // kurang 1 unit
+
+    const res = await app.inject({ method: "POST", url: "/v1/mint", payload: mintBody });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().collateral_source).toBe("gateway");
   });
 });
 
@@ -111,8 +209,8 @@ describe("GET /v1/cert/:id", () => {
 });
 
 describe("POST /v1/challenge", () => {
-  it("mengembalikan challenge_id + instruksi approve ke VAULT (RFC-001 P6)", async () => {
-    const { app } = await makeApp({ verdict: "ORIGINAL" });
+  it("mengembalikan instruksi approve ke VAULT (RFC-001 P6), TIDAK mengirim tx sendiri", async () => {
+    const { app, chain } = await makeApp({ verdict: "ORIGINAL" });
     await app.inject({
       method: "POST",
       url: "/v1/mint",
@@ -125,10 +223,51 @@ describe("POST /v1/challenge", () => {
     });
     expect(res.statusCode).toBe(200);
     const b = res.json();
-    expect(b.challenge_id).toBe("1");
-    expect(b.instructions.approve_target).toBe(b.instructions.approve_target); // vault addr ada
+    // Gateway tidak lagi menggugat atas nama sendiri: tidak ada challenge_id/tx_hash,
+    // dan tidak ada gugatan yang benar-benar terbuka di chain untuk cert ini.
+    expect(b.challenge_id).toBeUndefined();
+    expect(b.tx_hash).toBeUndefined();
+    expect(b.cert_id).toBe("1");
+    expect(b.instructions.challenge_manager).toBe(chain.challengeManagerAddress());
+    expect(b.instructions.approve_target).toBe(chain.vaultAddress());
+    expect(b.instructions.bond.base).toBe((await chain.challengeBondAmount()).toString());
     expect(b.instructions.warning).toMatch(/VAULT/);
+    expect(b.instructions.warning).toMatch(/wallet-mu sendiri/);
     expect(b.instructions.steps[0]).toMatch(/approve/);
+
+    // Bukti langsung: cert masih bisa digugat SUNGGUHAN (belum ada gugatan
+    // terbuka dari panggilan REST di atas) — kalau gateway sudah menggugat,
+    // ini akan gagal dengan ChallengeAlreadyOpen.
+    await expect(chain.challenge(1n, "ipfs://bukti-asli")).resolves.toMatchObject({ challengeId: 1n });
+  });
+
+  it("cert_id tak dikenal → error, bukan instruksi", async () => {
+    const { app } = await makeApp({ verdict: "ORIGINAL" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/challenge",
+      payload: { cert_id: "99", evidence_uri: "ipfs://bukti" },
+    });
+    expect(res.statusCode).toBeGreaterThanOrEqual(400);
+  });
+
+  it("cert yang sudah revoked → 409 CertificateAlreadyRevoked", async () => {
+    const { app, chain } = await makeApp({ verdict: "ORIGINAL" });
+    await app.inject({
+      method: "POST",
+      url: "/v1/mint",
+      payload: { ...imgPayload, creator_address: "0x3333333333333333333333333333333333333333", declared_value: "10000000" },
+    });
+    await chain.challenge(1n, "ipfs://bukti");
+    chain._resolve(1n, true); // challenger menang → revoked
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/challenge",
+      payload: { cert_id: "1", evidence_uri: "ipfs://bukti-lain" },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe("CertificateAlreadyRevoked");
   });
 });
 

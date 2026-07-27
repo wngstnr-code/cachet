@@ -69,7 +69,7 @@ export async function makeApp(opts: {
     chain,
     signer,
     store,
-    certPageBase: "https://cachet.test",
+    certPageBase: "https://cachet.test/testnet",
     demoMode: opts.demoMode ?? false,
     uploadLimitBytes: 15 * 1024 * 1024,
     x402: {
