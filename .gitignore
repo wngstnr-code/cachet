@@ -1,4 +1,4 @@
- # dependencies
+# dependencies
 node_modules/
 .pnpm-store/
 
@@ -21,8 +21,11 @@ contracts/**/build/
 contracts/out/
 contracts/cache/
 contracts/broadcast/**/dry-run/
-# broadcast/ SELAIN dry-run sengaja di-track: berisi alamat & tx hash hasil
-# deploy testnet — bukti on-chain yang dipakai saat serah-terima H3.
+# Hanya `*-latest.json` yang di-track: berisi alamat & tx hash hasil deploy —
+# bukti on-chain yang dirujuk README dan dibaca script/verify-sourcify-v2.py.
+# Salinan bertimestamp isinya identik dengan run-latest.json, jadi men-track-nya
+# hanya menambah puluhan file tanpa menambah satu pun bukti baru.
+contracts/broadcast/**/run-[0-9]*.json
 
 # env — NEVER commit real secrets (private keys, API keys, Supabase creds)
 # `.env.*` (bukan cuma `.env.local`) karena deploy per-chain memakai file
@@ -48,13 +51,17 @@ npm-debug.log*
 .idea/
 .vscode/
 
-# local agent state
-
-# CLAUDE.md
+# state agent lokal — bukan bagian dari produk, tidak untuk publik/juri
 task.txt
-
 graphify-out/
+.agents/
+skills-lock.json
+.claude/
 
-# Dokumen perencanaan internal — tidak untuk publik/juri (tetap ada di disk lokal)
-docs/
+# hasil deploy Vercel
 .vercel
+
+# Dokumen perencanaan internal, rekaman demo, dan project video Remotion.
+# Tetap ada di disk lokal — TIDAK terekam git, jadi tidak bisa dipulihkan
+# lewat git kalau folder ini terhapus.
+docs/
